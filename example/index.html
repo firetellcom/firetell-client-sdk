@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telcheap WebRTC Client</title>
+    <style>
+        video { width: 300px; border: 1px solid #000; }
+    </style>
+   <script src="../dist/index.global.js"></script>
+     <!-- <script type="text/javascript" src="./sdk-js/dist/tellinker-client.bundle.js"></script> -->
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+   
+    <div class="container">
+        <h1>WebRTC Client</h1>
+        <div id="login" class="d-block">
+
+            <label>token: </label>
+            <input type="text" id="token" placeholder="Nhập token của bạn" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFnZW50MSIsImRvbWFpbiI6ImRtdHNvbGFyMS5zaXAudGVsbGlua2VyLmNvbSIsImlhdCI6MTc1OTIxMTUyNywiZXhwIjoxNzU5Mjk3OTI3LCJhdWQiOiJhZ2VudC1hcGkiLCJpc3MiOiJTSURBSEZVWU83V0hGT1JWS1YiLCJzdWIiOiJBRzIxODIxMDIxIn0.HwQlwSfwwOaXdmSiYSXedl0NAWs3L8LCVUyrQDmoHuA">
+            <button class="btn btn-primary" onclick="initClient()">Login</button>
+
+        </div>
+        <div id="dashboard" class="d-none">
+            <div class="row">
+
+                <div id="user"></div>
+                <div id="mediaState"></div>
+                <div id="callState"></div>
+        
+                <label>Call to: </label>
+                <input type="text" id="callee" placeholder="Nhập số đích">
+                
+                <div class="d-flex flex-row">
+                    <button class="btn btn-warning" onclick="makeCall()">Gọi Audio</button>
+                    <button class="btn btn-warning" onclick="makeCall(true)">Gọi Video</button>
+                    <button class="btn btn-warning" onclick="hangup()">Kết thúc</button>
+
+                    <button class="btn btn-warning" onclick="onhold()">Hold</button>
+                    <button class="btn btn-warning" onclick="unhold()">UnHold</button>
+
+                    <button class="btn btn-warning" onclick="transfer()">Transfer</button>
+                </div>
+
+            </div>
+            <div class="row">
+                <div class="col-6">
+                    <h3>Local Video</h3>
+                    <video id="localStream" controls autoplay playsinline muted></video>
+                </div>
+                <div class="col-6">
+                    <h3>Remote Video</h3>
+                    <video id="remoteStream" controls autoplay playsinline></video>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+    <script>
+
+        let client;
+        let session;
+        let activeCall;
+        const wssServers = ["ws://192.168.1.20:8080"];
+        
+        
+        function initClient() {
+            
+            const token = document.getElementById('token').value;
+            if (!token) {
+                alert('Vui lòng nhập token');
+                return;
+            }
+            client = new Telcheap.TelcheapClient(token, wssServers);
+            // client.login(token).then(result => {
+            //     console.log("login result", result);
+            // }).catch(err => {
+            //     console.error("login err", err)
+            // });
+            client.events.on('error', (error) => {
+                console.error("error: ", error);
+            });
+            client.events.on('session', (session) => {
+                console.log('session', session);
+                if(session) {
+                    $("#login").removeClass("d-block").addClass("d-none")
+                    $("#dashboard").removeClass("d-none").addClass("d-block");
+                    $("#user").text("Connected: " + session.username + " | " + session.ext);
+                } else {
+
+                    $("#login").removeClass("d-none").addClass("d-block")
+                    $("#dashboard").removeClass("d-block").addClass("d-none")
+
+                }
+            });
+            client.events.on('call.offer', (call) => {
+
+
+                console.log('Nhận được cuộc gọi từ:', call.caller, call.callId);
+                call.on('state', (params) => {
+                    console.log('nhận call state từ client', params);
+                    if (['ENDED', 'ERROR', 'CANCEL'].includes(params.state)) {
+                        bootbox.hideAll();
+                        activeCall = null;
+                    }
+                });
+
+                // media
+                call.on("localStream", (stream) => {
+                    console.log("localStream event", stream);
+                    document.getElementById("localStream").srcObject = stream;
+                });
+                call.on("remoteStream", (stream) => {
+                    console.log("remoteStream event", stream);
+                    document.getElementById("remoteStream").srcObject = stream;
+                });
+                call.on('mediaState', (state) => {
+
+                    console.log("ICE Connection State: ", state);
+                    document.getElementById('mediaState').textContent = `Media State: ${state}`;
+
+                })
+
+
+                // Notify user
+                bootbox.hideAll();
+                 bootbox.dialog({
+                message: "Incoming call from " + call.caller + "!",
+                title: "Incoming call",
+                closeButton: false,
+                buttons: {
+                  success: {
+                    label: "Answer",
+                    className: "btn-success",
+                    callback: function () {
+                        call.accept()
+                        .then((result) => { activeCall = call; })
+                        .catch((err) => console.error('Accept failed:', err));
+                    },
+                  },
+                  danger: {
+                    label: "Decline",
+                    className: "btn-danger",
+                    callback: function () {
+                        call.reject()
+                    },
+                  },
+                },
+              });
+            
+
+            });
+        }
+
+        async function makeCall(video = false) {
+            if (!client) initClient();
+            const callee = document.getElementById('callee').value;
+            if (!callee) {
+                alert('Vui lòng nhập callee đích');
+                return;
+            }
+            try {
+                const call = new Telcheap.Call(client, {
+                    number: '84978126124',
+                    callee: callee,
+                    isVideo: video
+                });
+
+                // lắng nghe event cho object call này
+                call.on('state', (params) => {
+                    console.log('nhận call state từ client', params);
+                    if (['ENDED', 'ERROR', 'CANCEL'].includes(params.state)) {
+                        bootbox.hideAll();
+                        activeCall = null;
+                    }
+                });
+
+
+                // media
+                call.on("localStream", (stream) => {
+                    console.log("localStream event", stream);
+                    document.getElementById("localStream").srcObject = stream;
+                });
+                call.on("remoteStream", (stream) => {
+                    console.log("remoteStream event", stream);
+                    document.getElementById("remoteStream").srcObject = stream;
+                });
+                call.on('mediaState', (state) => {
+
+                    console.log("ICE Connection State: ", state);
+                    document.getElementById('mediaState').textContent = `Media State: ${state}`;
+
+                })
+                activeCall = call;
+                await call.start();
+                
+                console.log('Cuộc gọi thành công:', call);
+                 
+
+            } catch (error) {
+                console.error('Lỗi khi gọi:', error);
+                alert('Lỗi: ' + error.message);
+            }
+        }
+
+        async function hangup() {
+
+
+            try {
+                if(!activeCall) return;
+                await activeCall.hangup();
+                activeCall = null;
+            } catch (error) {
+                console.error('hangup', error);
+            }
+
+        }
+
+        async function onhold() {
+
+
+            try {
+                if(!activeCall) return;
+                await activeCall.onhold();
+            } catch (error) {
+                console.error('onhold', error);
+            }
+
+        }
+
+        async function unhold() {
+
+
+            try {
+                if(!activeCall) return;
+                await activeCall.unhold();
+            } catch (error) {
+                console.error('unhold', error);
+            }
+
+        }
+
+        async function transfer(callee = '1002') {
+
+
+            try {
+                if(!activeCall) return;
+                await activeCall.transfer(callee);
+                activeCall = null;
+            } catch (error) {
+                console.error('transfer', error);
+            }
+
+        }
+
+        // Tự động khởi tạo client khi nhập username và nhấn Enter
+        document.getElementById('token').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') initClient();
+        });
+
+        // Tự động gọi khi nhập số và nhấn Enter
+        document.getElementById('callee').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') makeCall();
+        });
+    </script>
+
+
+
+</body>
+</html>
