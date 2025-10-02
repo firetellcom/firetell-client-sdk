@@ -1,5 +1,5 @@
 {
-  "name": "@telcheap/telcheap-client",
+  "name": "@telcheap/telcheap-client-sdk",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.cjs",
