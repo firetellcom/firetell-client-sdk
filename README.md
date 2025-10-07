@@ -28,8 +28,7 @@ import { TelcheapClient, Call } from '@telcheap/telcheap-client-sdk';
 
 // Initialize client with JWT token and WebSocket servers
 const client = new TelcheapClient(
-  'your-jwt-token',
-  ['wss://your-websocket-server.com'],
+  'agent-jwt-token',
   'https://api.telcheap.com' // optional, default API URL
 );
 
@@ -138,27 +137,14 @@ await call.hangup();
 
 #### Constructor
 ```typescript
-new TelcheapClient(jwt: string, wsServers: string | string[], baseUrl?: string)
+new TelcheapClient(jwt: string, baseUrl?: string)
 ```
-
-#### Methods
-
-- `connect()`: Kết nối với server
-- `login(username: string, password: string, domain: string)`: Đăng nhập với username/password
-- `makeCall(call: Call, sdp: RTCSessionDescription)`: Thực hiện cuộc gọi
-- `sendHangup(callId: string)`: Kết thúc cuộc gọi
-- `sendAccept(callId: string, sdp: RTCSessionDescription)`: Chấp nhận cuộc gọi
-- `sendReject(callId: string)`: Từ chối cuộc gọi
-- `sendHold(callId: string, sdp: string)`: Tạm dừng cuộc gọi
-- `sendUnHold(callId: string, sdp: string)`: Tiếp tục cuộc gọi
-- `sendTransfer(callId: string, callee: string)`: Chuyển cuộc gọi
-- `logout()`: Đăng xuất
 
 #### Events
 
-- `session`: Khi có thông tin session
-- `error`: Khi có lỗi xảy ra
-- `call.offer`: Khi có cuộc gọi đến
+- `session`: connected to Telcheap server
+- `error`: When connect error
+- `call.offer`: Incomming call event
 
 ### Call
 
@@ -236,7 +222,6 @@ See `example/index.html` for a complete example of how to use the SDK.
 
 - SDK supports only one call at a time
 - Valid JWT token is required for connection
-- WebSocket server must support Telcheap signaling protocol
 - Camera/microphone permissions must be granted to the application
 
 ## License

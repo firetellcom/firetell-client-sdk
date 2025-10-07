@@ -6,19 +6,22 @@ import { EMessageNotification } from "./enums/EMessageNotification.enum";
 import { ECallState } from "./enums/ECallState.enum";
 import { EClientEventName } from "./enums/EClientEventName.enum";
 import { EStorageKey } from "./enums/ELocalStorageKey.enum";
+import { name as packageId, version as packageVersion } from '../package.json';
+import { IJwtPayload } from "./interfaces/IJwtPayload";
 
 export class TelcheapClient {
-  private sdkVersion: "1.0.0";
+  public sdkVersion = packageVersion;
+  private baseUrl = "";
   private ws: WebSocket | null;
-  private jwt: string;
-  private wsServers: string[];
-  private baseUrl: string;
+  private jwt: string = "";
+  private wsServers: string[] = [];
+  public iceServers: RTCIceServer[] = [];
   private transactionId: number = 1;
   private pendingTransactions = new Map();
   private session: ISession | null = null;
   private keepAliveTimeoutId: number;
   private retryWebsocket: number = 0;
-  private retryWebsocketTimeoutId: number = 0;
+  private retryWebsocketTimeoutId: any;
   /**
    * @event
    * session, incommingCall, error
@@ -33,20 +36,32 @@ export class TelcheapClient {
   /**
    * TelcheapClient constructor
    * @param jwt Json Web Token
-   * @param wsServers Websocket server(s)
-   * @param baseUrl Base API Url
    */
-  constructor(jwt: string, wsServers: string | string[], baseUrl: string = "https://api.telcheap.com") {
+  constructor(jwt: string, baseUrl: string = "https://api.telcheap.com/1.0") {
     if (!jwt) throw new Error('jwt is required in constructor');
-    if (!wsServers || wsServers && !wsServers.length) throw new Error('websocket server is required in constructor');
+    if (!this.parseJwt(jwt)) throw new Error('Invalid JWT');
     this.jwt = jwt;
-    this.wsServers = (typeof wsServers === "object" ? wsServers : [wsServers]);
-    this.baseUrl = baseUrl;
     this.ws = null;
-    this.initWebSocket();
-
+    this.baseUrl = baseUrl;
+    this.fetchWorkspaceDataCenter();
   }
-
+  private async fetchWorkspaceDataCenter() {
+    try {
+      const response = await fetch(`${this.baseUrl}/workspace/data-center`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.jwt}`
+        },
+        method: 'GET',
+      });
+      const data = await response.json() as { ws_servers: string[], ice_servers: RTCIceServer[] };
+      this.wsServers = data.ws_servers;
+      this.iceServers = data.ice_servers;
+      this.initWebSocket();
+    } catch (error) {
+      console.error("fetchWorkspaceDataCenter::Error fetching workspace config:", error);
+    }
+  }
   private initWebSocket(): void {
     this.checkWebRTCSupport().then(
       (isSupport) => (this.isWebRTCSupport = isSupport)
@@ -57,7 +72,7 @@ export class TelcheapClient {
     const wsUrl = `${this.wsServers[randomIndex]}`;
     this.ws = new WebSocket(wsUrl);
     this.ws.onopen = () => {
-      console.log("initWebSocket::WebSocket connected to:", this.wsServers[randomIndex]);
+      console.debug("initWebSocket::WebSocket connected to:", this.wsServers[randomIndex]);
       this.connected = true;
 
       if (this.jwt) {
@@ -67,7 +82,7 @@ export class TelcheapClient {
 
     this.ws.onclose = () => {
       this.connected = false;
-      console.log("initWebSocket::WebSocket closed");
+      console.debug("initWebSocket::WebSocket closed");
       if (this.keepAliveTimeoutId) {
         clearTimeout(this.keepAliveTimeoutId);
       }
@@ -141,8 +156,8 @@ export class TelcheapClient {
       return Promise.reject(new Error("Cannot login: WebSocket not connected"));
     }
     try {
-      const result = await this.sendRPCMessage<{ token: string }>(EMessageNotification.AUTH, { username, password, domain });
-      this.jwt = result.token;
+      const result = await this.sendRPCMessage<{ access_token: string, refresh_token: string }>(EMessageNotification.AUTH, { username, password, domain });
+      this.jwt = result.access_token;
       this.connect();
       Promise.resolve(null);
     } catch (error) {
@@ -238,6 +253,10 @@ export class TelcheapClient {
   async sendAccept(callId: string, sdp: RTCSessionDescription) {
     if (this.activeCalls.size > 0) {
       // return Promise.reject(new Error(`Cannot accept a new call while another call is active. Please hang up the current call first.`));
+      // hang up the current call
+      this.activeCalls.forEach(call => {
+        call.hangup();
+      });
     }
     try {
       const call = this.activeCalls.get(callId);
@@ -326,18 +345,30 @@ export class TelcheapClient {
   public getSessionInfo(): ISession | null {
     return this.session;
   }
+  /**
+   * Check session validity
+   * @returns boolean
+   */
   private checkSessionValidity() {
     if (!this.session.expires_at || this.session.expires_at === 0) return false;
     if (Date.now() > this.session.expires_at) return false;
     return true;
   }
 
+  /**
+   * Cleanup session
+   */
   private cleanupSession(): void {
     this.session = null;
     this.events.emit(EClientEventName.SESSION, null);
     this.events.offAll();
   }
 
+  /**
+   * Send WebSocket request
+   * @param request Request
+   * @returns Promise
+   */
   private sendWebsocket(request: any) {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(request));
@@ -567,6 +598,55 @@ export class TelcheapClient {
       this.ws.close();
       this.connected = false;
       this.pendingTransactions.clear();
+    }
+  }
+  /**
+   * Parse JWT
+   * @param jwt JWT token
+   * @returns IJwtPayload
+   */
+  private parseJwt(jwt: string): IJwtPayload | null {
+    try {
+      const parts = jwt.split('.');
+      if (parts.length < 2) {
+        console.error('parseJwt::Invalid token format');
+        return null;
+      }
+  
+      // Convert base64url → base64
+      const base64 = parts[1]
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
+        .padEnd(parts[1].length + (4 - parts[1].length % 4) % 4, '=');
+  
+      // Decode base64 safe for Node & Browser, support UTF-8
+      let jsonString: string;
+  
+      if (typeof window === 'undefined') {
+        // Node.js environment
+        jsonString = Buffer.from(base64, 'base64').toString('utf-8');
+      } else {
+        // Browser environment
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const decoder = new TextDecoder('utf-8');
+        jsonString = decoder.decode(bytes);
+      }
+  
+      const decoded: IJwtPayload = JSON.parse(jsonString);
+  
+      if (decoded.username && decoded.domain) {
+        return decoded;
+      } else {
+        console.error('parseJwt::Invalid payload structure', decoded);
+        return null;
+      }
+    } catch (e) {
+      console.error('parseJwt::Error parsing JWT:', e);
+      return null;
     }
   }
 }

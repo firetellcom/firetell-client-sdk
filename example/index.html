@@ -71,8 +71,7 @@
         let client;
         let session;
         let activeCall;
-        const wssServers = ["ws://192.168.1.20:8080"];
-        
+        const baseUrl = "https://api.telcheap.com/1.0";
         
         function initClient() {
             
@@ -81,12 +80,7 @@
                 alert('Vui lòng nhập token');
                 return;
             }
-            client = new Telcheap.TelcheapClient(token, wssServers);
-            // client.login(token).then(result => {
-            //     console.log("login result", result);
-            // }).catch(err => {
-            //     console.error("login err", err)
-            // });
+            client = new Telcheap.TelcheapClient(token, baseUrl);
             client.events.on('error', (error) => {
                 console.error("error: ", error);
             });
@@ -106,9 +100,9 @@
             client.events.on('call.offer', (call) => {
 
 
-                console.log('Nhận được cuộc gọi từ:', call.caller, call.callId);
+                console.log('Incoming call from:', call.caller, call.callId);
                 call.on('state', (params) => {
-                    console.log('nhận call state từ client', params);
+                    console.log('call state from client', params);
                     if (['ENDED', 'ERROR', 'CANCEL'].includes(params.state)) {
                         bootbox.hideAll();
                         activeCall = null;
@@ -166,7 +160,7 @@
             if (!client) initClient();
             const callee = document.getElementById('callee').value;
             if (!callee) {
-                alert('Vui lòng nhập callee đích');
+                alert('destination number is required');
                 return;
             }
             try {
@@ -178,7 +172,7 @@
 
                 // lắng nghe event cho object call này
                 call.on('state', (params) => {
-                    console.log('nhận call state từ client', params);
+                    console.log('call state from client', params);
                     if (['ENDED', 'ERROR', 'CANCEL'].includes(params.state)) {
                         bootbox.hideAll();
                         activeCall = null;
@@ -204,12 +198,12 @@
                 activeCall = call;
                 await call.start();
                 
-                console.log('Cuộc gọi thành công:', call);
+                console.log('make call success:', call);
                  
 
             } catch (error) {
-                console.error('Lỗi khi gọi:', error);
-                alert('Lỗi: ' + error.message);
+                console.error('make call error', error);
+                alert('Error: ' + error.message);
             }
         }
 
@@ -263,12 +257,18 @@
 
         }
 
-        // Tự động khởi tạo client khi nhập username và nhấn Enter
+        function logout() {
+            if(!client) return;
+            client.logout();
+            client = null;
+            session = null;
+            activeCall = null;
+        }
+
         document.getElementById('token').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') initClient();
         });
 
-        // Tự động gọi khi nhập số và nhấn Enter
         document.getElementById('callee').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') makeCall();
         });

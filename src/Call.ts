@@ -130,7 +130,7 @@ export class Call extends SimpleEventEmitter {
       try {
         this.cleanupPeerConnection();
         this.peerConnection = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          iceServers: this.client.iceServers.length ? this.client.iceServers : [{ urls: "stun:stun.l.google.com:19302" }],
         });
 
         this.peerConnection.oniceconnectionstatechange = () => {
