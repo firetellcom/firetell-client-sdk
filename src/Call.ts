@@ -22,8 +22,8 @@ export class Call extends SimpleEventEmitter {
   public isTransfer: boolean;
   constructor(client: TelcheapClient, options: CallOptions) {
     super();
-    if (!client) throw new Error(`client is missing`);
-    if (!options.callee) throw new Error(`callee is missing`);
+    if (!(client instanceof TelcheapClient)) throw new Error(`Missing or invalid client instance`);
+    if (!options.callee) throw new Error(`callee is required in options`);
     this.client = client;
     this.number = options.number;
     this.callee = options.callee;

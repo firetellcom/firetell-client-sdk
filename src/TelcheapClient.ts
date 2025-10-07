@@ -7,7 +7,7 @@ import { ECallState } from "./enums/ECallState.enum";
 import { EClientEventName } from "./enums/EClientEventName.enum";
 import { EStorageKey } from "./enums/ELocalStorageKey.enum";
 
-export class TelcheapClient extends SimpleEventEmitter {
+export class TelcheapClient {
   private sdkVersion: "1.0.0";
   private ws: WebSocket | null;
   private jwt: string;
@@ -30,12 +30,17 @@ export class TelcheapClient extends SimpleEventEmitter {
    * Current active calls Map<call_id, Call>
    */
   activeCalls = new Map<string, Call>();
-  constructor(jwt: string, wsServers: string[], baseUrl: string = "https://api.telcheap.com") {
-    super();
+  /**
+   * TelcheapClient constructor
+   * @param jwt Json Web Token
+   * @param wsServers Websocket server(s)
+   * @param baseUrl Base API Url
+   */
+  constructor(jwt: string, wsServers: string | string[], baseUrl: string = "https://api.telcheap.com") {
     if (!jwt) throw new Error('jwt is required in constructor');
-    if (!wsServers || wsServers && !wsServers.length) throw new Error('wsServers is required in constructor');
+    if (!wsServers || wsServers && !wsServers.length) throw new Error('websocket server is required in constructor');
     this.jwt = jwt;
-    this.wsServers = wsServers;
+    this.wsServers = (typeof wsServers === "object" ? wsServers : [wsServers]);
     this.baseUrl = baseUrl;
     this.ws = null;
     this.initWebSocket();
@@ -119,9 +124,9 @@ export class TelcheapClient extends SimpleEventEmitter {
   /**
    * Send login with username, password, domain
    * This will return JWT with Audience client-api
-   * @param username 
-   * @param password 
-   * @param domain 
+   * @param username Agent username
+   * @param password Agent password
+   * @param domain Workspace domain. Example: yourworkspace.telcheap.com
    * @returns 
    */
   public async login(username: string, password: string, domain: string) {
@@ -146,7 +151,19 @@ export class TelcheapClient extends SimpleEventEmitter {
     }
   }
 
-  async makeCall(call: Call, sdp: RTCSessionDescription): Promise<string> {
+  /**
+   * Make a new call
+   * @param call Call instance
+   * @param sdp RTCSessionDescription
+   * @returns call_id if success
+   */
+  public async makeCall(call: Call, sdp: RTCSessionDescription): Promise<string> {
+    if (!(call instanceof Call)) {
+      return Promise.reject(new Error(`Missing or invalid call instance'`));
+    }
+    if (!sdp) {
+      return Promise.reject(new Error(`Missing or invalid sdp'`));
+    }
     if (this.activeCalls.size > 0) {
       return Promise.reject(new Error("Cannot make a new call while another call is active. Please hang up or reject the current call."));
     }
@@ -155,6 +172,7 @@ export class TelcheapClient extends SimpleEventEmitter {
     }
     try {
       const result = await this.sendRPCMessage<{ call_id: string }>(EMessageNotification.CALL_OFFER, { number: call.number, callee: call.callee, sdp: sdp });
+      call.callId = result.call_id;
       this.activeCalls.set(result.call_id, call);
       return Promise.resolve(result.call_id);
     } catch (error) {
@@ -162,10 +180,17 @@ export class TelcheapClient extends SimpleEventEmitter {
     }
   }
 
+  /**
+   * Send Hold a Call
+   * @param callId call_id
+   * @param sdp RTCSessionDescription
+   * @returns 
+   */
   async sendHold(callId: string, sdp: string): Promise<RTCSessionDescription> {
     try {
       const result = await this.sendRPCMessage<RTCSessionDescription>(EMessageNotification.CALL_HOLD, {
-        call_id: callId, sdp: {
+        call_id: callId, 
+        sdp: {
           type: "offer",
           sdp: sdp
         }
@@ -175,7 +200,12 @@ export class TelcheapClient extends SimpleEventEmitter {
       return Promise.reject(error);
     }
   }
-
+  /**
+   * Send UnHold
+   * @param callId call_id
+   * @param sdp RTCSessionDescription
+   * @returns 
+   */
   async sendUnHold(callId: string, sdp: string): Promise<RTCSessionDescription> {
     try {
       const result = await this.sendRPCMessage<RTCSessionDescription>(EMessageNotification.CALL_UNHOLD, {
@@ -189,7 +219,11 @@ export class TelcheapClient extends SimpleEventEmitter {
       return Promise.reject(error);
     }
   }
-
+  /**
+   * Send Hangup
+   * @param callId call_id
+   * @returns 
+   */
   async sendHangup(callId: string) {
 
     try {
