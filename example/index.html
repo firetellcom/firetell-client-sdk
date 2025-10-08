@@ -170,7 +170,7 @@
                     isVideo: video
                 });
 
-                // lắng nghe event cho object call này
+                // listen to call state
                 call.on('state', (params) => {
                     console.log('call state from client', params);
                     if (['ENDED', 'ERROR', 'CANCEL'].includes(params.state)) {
@@ -180,7 +180,7 @@
                 });
 
 
-                // media
+                // media stream
                 call.on("localStream", (stream) => {
                     console.log("localStream event", stream);
                     document.getElementById("localStream").srcObject = stream;
@@ -189,6 +189,8 @@
                     console.log("remoteStream event", stream);
                     document.getElementById("remoteStream").srcObject = stream;
                 });
+
+                // media state
                 call.on('mediaState', (state) => {
 
                     console.log("ICE Connection State: ", state);

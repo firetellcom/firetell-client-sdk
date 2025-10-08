@@ -194,7 +194,7 @@ export class Call extends SimpleEventEmitter {
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    const sdp = await this.client.sendHold(this.callId, offer.sdp);
+    const sdp = await this.client.sendHold(this.callId, offer);
     this.setRemoteDescription(sdp);
     this.state = ECallState.ONHOLD;
   }
@@ -205,14 +205,14 @@ export class Call extends SimpleEventEmitter {
     }
     this.peerConnection.getTransceivers().forEach(t => {
       if (t.sender.track) {
-        t.direction = "sendrecv"; // or "inactive"
+        t.direction = "sendrecv";
       }
     });
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
     
-    const sdp = await this.client.sendUnHold(this.callId, offer.sdp);
+    const sdp = await this.client.sendUnHold(this.callId, offer);
     this.setRemoteDescription(sdp);
     
     this.state = ECallState.ACTIVE;
@@ -237,9 +237,11 @@ export class Call extends SimpleEventEmitter {
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
+      this.emit(ECallEventName.localStream, null);
     }
     if (this.remoteStream) {
       this.remoteStream = null;
+      this.emit(ECallEventName.remoteStream, null);
     }
   }
 }

@@ -1,6 +1,6 @@
 # Telcheap Client SDK
 
-TypeScript SDK for Telcheap WebRTC Client, supporting audio/video calls via WebRTC with Telcheap system.
+TypeScript/JavaScript SDK for Telcheap WebRTC Client, supporting audio/video calls via WebRTC with Telcheap system.
 
 ## Features
 
@@ -62,13 +62,13 @@ call.on('state', (params) => {
 });
 
 call.on('localStream', (stream) => {
-  // Display local video
-  document.getElementById('localVideo').srcObject = stream;
+  // Display local audio/video
+  document.getElementById('localStream').srcObject = stream;
 });
 
 call.on('remoteStream', (stream) => {
-  // Display remote video
-  document.getElementById('remoteVideo').srcObject = stream;
+  // Display remote audio/video
+  document.getElementById('remoteStream').srcObject = stream;
 });
 
 call.on('mediaState', (state) => {
@@ -210,7 +210,7 @@ enum EClientEventName {
 
 ## Complete Example
 
-See `example/index.html` for a complete example of how to use the SDK.
+See `example/index.html` for a complete example of how to use the SDK in browser.
 
 ## System Requirements
 

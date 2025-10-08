@@ -47,7 +47,7 @@ export class TelcheapClient {
   }
   private async fetchWorkspaceDataCenter() {
     try {
-      const response = await fetch(`${this.baseUrl}/workspace/data-center`, {
+      const response = await fetch(`${this.baseUrl}/data-center`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.jwt}`
@@ -198,17 +198,14 @@ export class TelcheapClient {
   /**
    * Send Hold a Call
    * @param callId call_id
-   * @param sdp RTCSessionDescription
+   * @param sdp RTCSessionDescriptionInit
    * @returns 
    */
-  async sendHold(callId: string, sdp: string): Promise<RTCSessionDescription> {
+  async sendHold(callId: string, sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescription> {
     try {
       const result = await this.sendRPCMessage<RTCSessionDescription>(EMessageNotification.CALL_HOLD, {
         call_id: callId, 
-        sdp: {
-          type: "offer",
-          sdp: sdp
-        }
+        sdp: sdp
       });
       return Promise.resolve(result);
     } catch (error) {
@@ -218,16 +215,14 @@ export class TelcheapClient {
   /**
    * Send UnHold
    * @param callId call_id
-   * @param sdp RTCSessionDescription
+   * @param sdp RTCSessionDescriptionInit
    * @returns 
    */
-  async sendUnHold(callId: string, sdp: string): Promise<RTCSessionDescription> {
+  async sendUnHold(callId: string, sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescription> {
     try {
       const result = await this.sendRPCMessage<RTCSessionDescription>(EMessageNotification.CALL_UNHOLD, {
-        call_id: callId, sdp: {
-          type: "offer",
-          sdp: sdp
-        }
+        call_id: callId, 
+        sdp: sdp
       });
       return Promise.resolve(result);
     } catch (error) {
@@ -312,7 +307,7 @@ export class TelcheapClient {
       };
 
       if (callback) {
-        const timeoutMs = 30000; // Timeout 30 giây
+        const timeoutMs = 30000; // Timeout 30s
         const timeoutId = setTimeout(() => {
           this.pendingTransactions.delete(request.id);
           reject(new Error(`Request method ${method} timed out after ${timeoutMs}ms`));
@@ -490,13 +485,13 @@ export class TelcheapClient {
           );
         }
 
-        // đã xử lý xong Transaction. xoá id
+        // processed Transaction. delete id
         this.pendingTransactions.delete(message.id);
       } else if (
         (message.method && !message.id) ||
         (message.id && message.id === 0)
       ) {
-        // nếu không có id thì đây là message server chủ động gửi cho client
+        // if no id, this is message server send to client
       }
     } catch (error) {
       console.error("Error parsing WebSocket message:", error);
@@ -536,7 +531,7 @@ export class TelcheapClient {
     this.disconnect();
 
     this.retryWebsocket = (this.retryWebsocket || 0) + 1;
-    const maxRetries = 30; // Giới hạn số lần thử
+    const maxRetries = 30; // Limit retry attempts
     if (this.retryWebsocket > maxRetries) {
       console.error("#reconnect::Max reconnect attempts reached:", this.retryWebsocket);
       clearInterval(this.retryWebsocketTimeoutId);
