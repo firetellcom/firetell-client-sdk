@@ -1,6 +1,6 @@
 export interface CallOptions {
   number?: string;
-  callee: string;
+  calleeId: string;
   caller?: string;
   isVideo?: boolean;
   isTransfer?: boolean;

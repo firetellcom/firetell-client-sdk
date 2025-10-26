@@ -8,7 +8,7 @@ import  { TelcheapClient }  from "./TelcheapClient";
 export class Call extends SimpleEventEmitter {
   public callId: string;
   public number: string;
-  public callee: string;
+  public calleeId: string;
   public caller: string;
   public active: boolean = false;
   private client: TelcheapClient | null;
@@ -23,10 +23,10 @@ export class Call extends SimpleEventEmitter {
   constructor(client: TelcheapClient, options: CallOptions) {
     super();
     if (!(client instanceof TelcheapClient)) throw new Error(`Missing or invalid client instance`);
-    if (!options.callee) throw new Error(`callee is required in options`);
+    if (!options.calleeId) throw new Error(`callee is required in options`);
     this.client = client;
     this.number = options.number;
-    this.callee = options.callee;
+    this.calleeId = options.calleeId;
     this.caller = options.caller;
     this.isVideo = options.isVideo || false;
     this.isTransfer = options.isTransfer || false;

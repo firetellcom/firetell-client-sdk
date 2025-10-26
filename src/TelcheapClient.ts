@@ -43,11 +43,11 @@ export class TelcheapClient {
     this.jwt = jwt;
     this.ws = null;
     this.baseUrl = baseUrl;
-    this.fetchWorkspaceDataCenter();
+    this.fetchWorkspaceMetadata();
   }
-  private async fetchWorkspaceDataCenter() {
+  private async fetchWorkspaceMetadata() {
     try {
-      const response = await fetch(`${this.baseUrl}/data-center`, {
+      const response = await fetch(`${this.baseUrl}/api`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.jwt}`
@@ -186,7 +186,7 @@ export class TelcheapClient {
       return Promise.reject(new Error(`WebRTC is not supported in this environment.`));
     }
     try {
-      const result = await this.sendRPCMessage<{ call_id: string }>(EMessageNotification.CALL_OFFER, { number: call.number, callee: call.callee, sdp: sdp });
+      const result = await this.sendRPCMessage<{ call_id: string }>(EMessageNotification.CALL_OFFER, { number: call.number, callee: call.calleeId, sdp: sdp });
       call.callId = result.call_id;
       this.activeCalls.set(result.call_id, call);
       return Promise.resolve(result.call_id);
@@ -435,7 +435,7 @@ export class TelcheapClient {
       const call = new Call(this, {
         number: number,
         caller: caller,
-        callee: this.getSessionInfo().username,
+        calleeId: this.getSessionInfo().username,
         isVideo: this.isVideoCall(sdp),
         isTransfer: is_transfer || false,
       });
