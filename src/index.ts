@@ -1,3 +1,3 @@
-import { TelcheapClient } from "./TelcheapClient";
+import { FiretellClient } from "./FiretellClient";
 export { Call } from "./Call";
-export { TelcheapClient };
+export { FiretellClient };

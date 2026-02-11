@@ -9,7 +9,7 @@ import { EStorageKey } from "./enums/ELocalStorageKey.enum";
 import { name as packageId, version as packageVersion } from '../package.json';
 import { IJwtPayload } from "./interfaces/IJwtPayload";
 
-export class TelcheapClient {
+export class FiretellClient {
   public sdkVersion = packageVersion;
   private baseUrl = "";
   private ws: WebSocket | null;
@@ -34,10 +34,10 @@ export class TelcheapClient {
    */
   activeCalls = new Map<string, Call>();
   /**
-   * TelcheapClient constructor
+   * FiretellClient constructor
    * @param jwt Json Web Token
    */
-  constructor(jwt: string, baseUrl: string = "https://api.telcheap.com/1.0") {
+  constructor(jwt: string, baseUrl: string = "https://api.firetell.com/1.0") {
     if (!jwt) throw new Error('jwt is required in constructor');
     if (!this.parseJwt(jwt)) throw new Error('Invalid JWT');
     this.jwt = jwt;
@@ -204,7 +204,7 @@ export class TelcheapClient {
   async sendHold(callId: string, sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescription> {
     try {
       const result = await this.sendRPCMessage<RTCSessionDescription>(EMessageNotification.CALL_HOLD, {
-        call_id: callId, 
+        call_id: callId,
         sdp: sdp
       });
       return Promise.resolve(result);
@@ -221,7 +221,7 @@ export class TelcheapClient {
   async sendUnHold(callId: string, sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescription> {
     try {
       const result = await this.sendRPCMessage<RTCSessionDescription>(EMessageNotification.CALL_UNHOLD, {
-        call_id: callId, 
+        call_id: callId,
         sdp: sdp
       });
       return Promise.resolve(result);
@@ -607,16 +607,16 @@ export class TelcheapClient {
         console.error('parseJwt::Invalid token format');
         return null;
       }
-  
+
       // Convert base64url → base64
       const base64 = parts[1]
         .replace(/-/g, '+')
         .replace(/_/g, '/')
         .padEnd(parts[1].length + (4 - parts[1].length % 4) % 4, '=');
-  
+
       // Decode base64 safe for Node & Browser, support UTF-8
       let jsonString: string;
-  
+
       if (typeof window === 'undefined') {
         // Node.js environment
         jsonString = Buffer.from(base64, 'base64').toString('utf-8');
@@ -630,9 +630,9 @@ export class TelcheapClient {
         const decoder = new TextDecoder('utf-8');
         jsonString = decoder.decode(bytes);
       }
-  
+
       const decoded: IJwtPayload = JSON.parse(jsonString);
-  
+
       if (decoded.username && decoded.domain) {
         return decoded;
       } else {

@@ -1,5 +1,5 @@
 {
-  "name": "@telcheap/telcheap-client-sdk",
+  "name": "@firetell/firetell-client-sdk",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.cjs",
@@ -11,17 +11,17 @@
   "files": [
     "dist"
   ],
-  "author": "developers@telcheap.com",
+  "author": "developers@firetell.com",
   "license": "ISC",
   "keywords": [
     "sip",
     "webrtc",
     "voip",
-    "telcheap"
+    "firetell"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/telcheap/telcheap-client-sdk.git"
+    "url": "https://github.com/firetellcom/firetell-client-sdk.git"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
