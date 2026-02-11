@@ -2,16 +2,16 @@ import { ECallEventName } from "./enums/ECallEventName.enum";
 import { ECallState } from "./enums/ECallState.enum";
 import { CallOptions } from "./interfaces/ICallOptions";
 import { Listener, SimpleEventEmitter } from "./SimpleEventEmitter";
-import  { TelcheapClient }  from "./TelcheapClient";
+import { FiretellClient } from "./FiretellClient";
 
 
 export class Call extends SimpleEventEmitter {
   public callId: string;
   public number: string;
-  public callee: string;
+  public calleeId: string;
   public caller: string;
   public active: boolean = false;
-  private client: TelcheapClient | null;
+  private client: FiretellClient | null;
   private state: ECallState;
   private peerConnection = new RTCPeerConnection();
   public remoteDescription: RTCSessionDescription | null = null;
@@ -20,13 +20,13 @@ export class Call extends SimpleEventEmitter {
   public isVideo: boolean | MediaTrackConstraints;
   public isMuted: boolean;
   public isTransfer: boolean;
-  constructor(client: TelcheapClient, options: CallOptions) {
+  constructor(client: FiretellClient, options: CallOptions) {
     super();
-    if (!client) throw new Error(`client is missing`);
-    if (!options.callee) throw new Error(`callee is missing`);
+    if (!(client instanceof FiretellClient)) throw new Error(`Missing or invalid client instance`);
+    if (!options.calleeId) throw new Error(`callee is required in options`);
     this.client = client;
     this.number = options.number;
-    this.callee = options.callee;
+    this.calleeId = options.calleeId;
     this.caller = options.caller;
     this.isVideo = options.isVideo || false;
     this.isTransfer = options.isTransfer || false;
@@ -36,12 +36,12 @@ export class Call extends SimpleEventEmitter {
     this.active = true;
     this.state = ECallState.INITIATED;
     try {
-      await this.setupWebrtcMedia({video: this.isVideo, audio: true });
+      await this.setupWebrtcMedia({ video: this.isVideo, audio: true });
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
       // chờ thu thập đủ ICE
       const sdp = await this.getSDPFull();
-      
+
       const callId = await this.client.makeCall(this, sdp);
       this.callId = callId;
       this.active = true;
@@ -65,10 +65,10 @@ export class Call extends SimpleEventEmitter {
 
   async accept(): Promise<void> {
     this.state = ECallState.ANSWERED;
-    if(!this.remoteDescription) {
+    if (!this.remoteDescription) {
       throw new Error(`remoteDescription is missing`);
     }
-    await this.setupWebrtcMedia({video: this.isVideo, audio: true });
+    await this.setupWebrtcMedia({ video: this.isVideo, audio: true });
     await this.setRemoteDescription(this.remoteDescription);
     const answer = await this.peerConnection.createAnswer();
     await this.peerConnection.setLocalDescription(answer);
@@ -99,7 +99,7 @@ export class Call extends SimpleEventEmitter {
    * report destroy
    */
   async destroy() {
-    if(this.active) await this.hangup();
+    if (this.active) await this.hangup();
     this.active = false;
     this.client = null;
     this.cleanupPeerConnection();
@@ -112,7 +112,7 @@ export class Call extends SimpleEventEmitter {
    */
   public async setRemoteDescription(sdp: RTCSessionDescription) {
     try {
-     // if (this.peerConnection.remoteDescription) return;
+      // if (this.peerConnection.remoteDescription) return;
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
     } catch (error) {
       console.error('setRemoteDescription', error);
@@ -130,7 +130,7 @@ export class Call extends SimpleEventEmitter {
       try {
         this.cleanupPeerConnection();
         this.peerConnection = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          iceServers: this.client.iceServers.length ? this.client.iceServers : [{ urls: "stun:stun.l.google.com:19302" }],
         });
 
         this.peerConnection.oniceconnectionstatechange = () => {
@@ -169,7 +169,7 @@ export class Call extends SimpleEventEmitter {
   private async getSDPFull(): Promise<RTCSessionDescription> {
     return new Promise(async (resolve, reject) => {
       try {
-        
+
         this.peerConnection.onicecandidate = (event) => {
           if (event.candidate) {
 
@@ -194,7 +194,7 @@ export class Call extends SimpleEventEmitter {
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    const sdp = await this.client.sendHold(this.callId, offer.sdp);
+    const sdp = await this.client.sendHold(this.callId, offer);
     this.setRemoteDescription(sdp);
     this.state = ECallState.ONHOLD;
   }
@@ -205,21 +205,21 @@ export class Call extends SimpleEventEmitter {
     }
     this.peerConnection.getTransceivers().forEach(t => {
       if (t.sender.track) {
-        t.direction = "sendrecv"; // or "inactive"
+        t.direction = "sendrecv";
       }
     });
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    
-    const sdp = await this.client.sendUnHold(this.callId, offer.sdp);
+
+    const sdp = await this.client.sendUnHold(this.callId, offer);
     this.setRemoteDescription(sdp);
-    
+
     this.state = ECallState.ACTIVE;
   }
 
   public get isHold(): boolean {
-    return this.state === ECallState.ONHOLD; 
+    return this.state === ECallState.ONHOLD;
   }
   /**
    * cleanup Peer Connection
@@ -237,9 +237,11 @@ export class Call extends SimpleEventEmitter {
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
+      this.emit(ECallEventName.localStream, null);
     }
     if (this.remoteStream) {
       this.remoteStream = null;
+      this.emit(ECallEventName.remoteStream, null);
     }
   }
 }
