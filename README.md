@@ -1,11 +1,11 @@
-# Telcheap Client SDK
+# Firetell Client SDK
 
-TypeScript/JavaScript SDK for Telcheap WebRTC Client, supporting audio/video calls via WebRTC with Telcheap system.
+TypeScript/JavaScript SDK for Firetell WebRTC Client, supporting audio/video calls via WebRTC with Firetell system.
 
 ## Features
 
 - ✅ **Audio/Video Calls**: Make WebRTC calls with audio and video support
-- ✅ **Session Management**: Connect and manage sessions with Telcheap server
+- ✅ **Session Management**: Connect and manage sessions with Firetell server
 - ✅ **Incoming Call Handling**: Receive and handle incoming calls from others
 - ✅ **Hold/Unhold**: Pause and resume calls
 - ✅ **Transfer**: Transfer calls to other numbers
@@ -16,7 +16,7 @@ TypeScript/JavaScript SDK for Telcheap WebRTC Client, supporting audio/video cal
 ## Installation
 
 ```bash
-npm install @telcheap/telcheap-client-sdk
+npm install @firetell/firetell-client-sdk
 ```
 
 ## Basic Usage
@@ -24,12 +24,12 @@ npm install @telcheap/telcheap-client-sdk
 ### 1. Initialize Client
 
 ```typescript
-import { TelcheapClient, Call } from '@telcheap/telcheap-client-sdk';
+import { FiretellClient, Call } from '@firetell/firetell-client-sdk';
 
 // Initialize client with JWT token and WebSocket servers
-const client = new TelcheapClient(
+const client = new FiretellClient(
   'agent-jwt-token',
-  'https://api.telcheap.com' // optional, default API URL
+  'https://api.firetell.com' // optional, default API URL
 );
 
 // Listen to events
@@ -133,16 +133,16 @@ await call.hangup();
 
 ## API Reference
 
-### TelcheapClient
+### FiretellClient
 
 #### Constructor
 ```typescript
-new TelcheapClient(jwt: string, baseUrl?: string)
+new FiretellClient(jwt: string, baseUrl?: string)
 ```
 
 #### Events
 
-- `session`: connected to Telcheap server
+- `session`: connected to Firetell server
 - `error`: When connect error
 - `call.offer`: Incomming call event
 
@@ -150,7 +150,7 @@ new TelcheapClient(jwt: string, baseUrl?: string)
 
 #### Constructor
 ```typescript
-new Call(client: TelcheapClient, options: CallOptions)
+new Call(client: FiretellClient, options: CallOptions)
 ```
 
 #### CallOptions Interface
@@ -230,4 +230,4 @@ ISC
 
 ## Support
 
-Contact: developers@telcheap.com
+Contact: developers@firetell.com
