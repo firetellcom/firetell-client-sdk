@@ -52,19 +52,35 @@ export class FiretellClient {
   /**
    * FiretellClient constructor
    * @param jwt Json Web Token
-   * @param baseUrl API base URL (default: https://api.firetell.com/1.0)
+   * @param domain Workspace API domain
    */
-  constructor(jwt: string, baseUrl: string = "https://api.firetell.com/1.0") {
+  constructor(jwt: string, domain: string) {
     if (!jwt) throw new Error("jwt is required in constructor");
     if (!this.parseJwt(jwt)) throw new Error("Invalid JWT");
     this.jwt = jwt;
     this.ws = null;
-    this.baseUrl = baseUrl;
     this.ready = new Promise<ISession>((resolve, reject) => {
       this._resolveReady = resolve;
       this._rejectReady = reject;
     });
+    this.baseUrl = this.checkWorkspaceDomain(domain);
     this.fetchWorkspaceMetadata();
+  }
+
+  private checkWorkspaceDomain(domain: string) {
+    if (!domain) throw new Error("Workspace domain is required");
+    // validate domain can start https:// or http:// or without protocol
+    // domain can't end with /    
+    if (domain.endsWith("/")) {
+      domain = domain.slice(0, -1);
+    }
+    const domainRegex = /^(https?:\/\/)?([^\s/$.?#].[^\s]*)$/;
+    if (!domainRegex.test(domain)) throw new Error("Invalid workspace domain");
+    // if domain not start with https:// or http://, add https://
+    if (!domain.startsWith("https://") && !domain.startsWith("http://")) {
+      domain = `https://${domain}`;
+    }
+    return domain;
   }
 
   private async fetchWorkspaceMetadata() {
