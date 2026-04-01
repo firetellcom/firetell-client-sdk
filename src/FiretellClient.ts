@@ -56,18 +56,18 @@ export class FiretellClient {
    */
   constructor(jwt: string, domain: string) {
     if (!jwt) throw new Error("jwt is required in constructor");
-    if (!this.parseJwt(jwt)) throw new Error("Invalid JWT");
+    if (!this._parseJwt(jwt)) throw new Error("Invalid JWT");
     this.jwt = jwt;
     this.ws = null;
     this.ready = new Promise<ISession>((resolve, reject) => {
       this._resolveReady = resolve;
       this._rejectReady = reject;
     });
-    this.baseUrl = this.checkWorkspaceDomain(domain);
-    this.fetchWorkspaceMetadata();
+    this.baseUrl = this._checkWorkspaceDomain(domain);
+    this._fetchWorkspaceMetadata();
   }
 
-  private checkWorkspaceDomain(domain: string) {
+  private _checkWorkspaceDomain(domain: string) {
     if (!domain) throw new Error("Workspace domain is required");
     // validate domain can start https:// or http:// or without protocol
     // domain can't end with /    
@@ -83,7 +83,7 @@ export class FiretellClient {
     return domain;
   }
 
-  private async fetchWorkspaceMetadata() {
+  private async _fetchWorkspaceMetadata() {
     try {
       const response = await fetch(`${this.baseUrl}/api`, {
         headers: {
@@ -98,7 +98,7 @@ export class FiretellClient {
       };
       this.wsServers = data.ws_servers;
       this.iceServers = data.ice_servers;
-      this.initWebSocket();
+      this._initWebSocket();
     } catch (error) {
       console.error(
         "fetchWorkspaceMetadata::Error fetching workspace config:",
@@ -107,8 +107,8 @@ export class FiretellClient {
     }
   }
 
-  private initWebSocket(): void {
-    this.checkWebRTCSupport().then(
+  private _initWebSocket(): void {
+    this._checkWebRTCSupport().then(
       (isSupport) => (this.isWebRTCSupport = isSupport)
     );
 
@@ -135,7 +135,7 @@ export class FiretellClient {
         clearTimeout(this.keepAliveTimeoutId);
         this.keepAliveTimeoutId = null;
       }
-      this.reconnect();
+      this._reconnect();
     };
 
     this.ws.onerror = (error) => {
@@ -144,7 +144,7 @@ export class FiretellClient {
     };
 
     this.ws.onmessage = (event) => {
-      this.handleWebSocketMessage(event.data);
+      this._handleWebSocketMessage(event.data);
     };
   }
 
@@ -154,7 +154,7 @@ export class FiretellClient {
    */
   async connect(): Promise<ISession> {
     const deviceId =
-      localStorage.getItem(EStorageKey.deviceId) || this.generateDeviceId();
+      localStorage.getItem(EStorageKey.deviceId) || this._generateDeviceId();
     const device = {
       sdk_version: this.sdkVersion,
       user_agent: navigator.userAgent || "Unknown",
@@ -182,7 +182,7 @@ export class FiretellClient {
       // After successful reconnection, restore active calls
       if (this.isReconnecting) {
         this.isReconnecting = false;
-        await this.reconnectCalls();
+        await this._reconnectCalls();
       }
 
       return session;
@@ -192,17 +192,17 @@ export class FiretellClient {
         message: error.message,
       });
       this._rejectReady(error);
-      this.cleanupSession();
+      this._cleanupSession();
       throw error;
     }
   }
 
   /**
    * Send login with username, password, domain
-   * This will return JWT with Audience client-api
+   * This will return JWT with Audience agent-api
    * @param username Agent username
    * @param password Agent password
-   * @param domain Workspace domain. Example: yourworkspace.telcheap.com
+   * @param domain Workspace domain. Example: yourworkspace.firetell.com
    */
   public async login(
     username: string,
@@ -215,22 +215,31 @@ export class FiretellClient {
     if (!domain) {
       return Promise.reject(new Error("domain is required"));
     }
+
+    // login with http call
+    const response = await fetch(`${this.baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        domain,
+      }),
+    });
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    this.jwt = data.access_token;
+    await this.connect();
     if (!this.connected) {
       return Promise.reject(
         new Error("Cannot login: WebSocket not connected")
       );
     }
-    try {
-      const result = await this.sendRPCMessage<{
-        access_token: string;
-        refresh_token: string;
-      }>(EMessageNotification.CONNECT, { username, password, domain });
-      this.jwt = result.access_token;
-      await this.connect();
-    } catch (error) {
-      this.cleanupSession();
-      throw error;
-    }
+    return Promise.resolve();
   }
 
   /**
@@ -444,7 +453,7 @@ export class FiretellClient {
    * Retrieve active calls after a WebSocket reconnection.
    * The server auto-swaps old socketId → new socketId during connect().
    */
-  private async reconnectCalls(): Promise<void> {
+  private async _reconnectCalls(): Promise<void> {
     try {
       const result = await this.sendRPCMessage<{
         active_calls: IActiveCall[];
@@ -477,7 +486,7 @@ export class FiretellClient {
   ): Promise<T> {
     // Only session.connect is allowed without a valid session
     if (method !== EMessageNotification.CONNECT) {
-      if (!this.checkSessionValidity()) {
+      if (!this._checkSessionValidity()) {
         return Promise.reject(
           new Error("Session expired. Please login again.")
         );
@@ -491,7 +500,7 @@ export class FiretellClient {
         jsonrpc: "2.0",
         method,
         params,
-        ...(callback ? { id: this.generateTransactionId() } : {}),
+        ...(callback ? { id: this._generateTransactionId() } : {}),
       };
 
       if (callback) {
@@ -516,14 +525,14 @@ export class FiretellClient {
           },
         });
 
-        this.sendWebsocket(request).catch((err) => {
+        this._sendWebsocket(request).catch((err) => {
           clearTimeout(timeoutId);
           this.pendingTransactions.delete(request.id!);
           reject(err);
         });
       } else {
         // Notification (fire-and-forget)
-        this.sendWebsocket(request)
+        this._sendWebsocket(request)
           .then(() => resolve(null as T))
           .catch(reject);
       }
@@ -538,7 +547,7 @@ export class FiretellClient {
    * Check session validity
    * @returns boolean
    */
-  private checkSessionValidity(): boolean {
+  private _checkSessionValidity(): boolean {
     if (!this.session) return false;
     if (!this.session.expires_at || this.session.expires_at === 0) return false;
     if (Date.now() > this.session.expires_at) return false;
@@ -548,7 +557,7 @@ export class FiretellClient {
   /**
    * Cleanup session and remove all event listeners
    */
-  private cleanupSession(): void {
+  private _cleanupSession(): void {
     this.session = null;
     this.events.emit(EClientEventName.SESSION, null);
     this.events.offAll();
@@ -557,7 +566,7 @@ export class FiretellClient {
   /**
    * Send WebSocket request
    */
-  private sendWebsocket(request: any): Promise<number | undefined> {
+  private _sendWebsocket(request: any): Promise<number | undefined> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(request));
       return Promise.resolve(request.id);
@@ -566,11 +575,11 @@ export class FiretellClient {
     }
   }
 
-  private generateTransactionId(): number {
+  private _generateTransactionId(): number {
     return this.transactionId++;
   }
 
-  private generateDeviceId(): string {
+  private _generateDeviceId(): string {
     const uuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
       /[xy]/g,
       function (c) {
@@ -587,7 +596,7 @@ export class FiretellClient {
     return /m=video/.test(sdp.sdp || "");
   }
 
-  private checkWebRTCSupport(): Promise<boolean> {
+  private _checkWebRTCSupport(): Promise<boolean> {
     const hasRTCPeerConnection = !!window.RTCPeerConnection;
     const hasGetUserMedia = !!(
       navigator.mediaDevices && navigator.mediaDevices.getUserMedia
@@ -607,7 +616,7 @@ export class FiretellClient {
   /**
    * Handle server notification messages
    */
-  private handleMessageNotification(message: {
+  private _handleMessageNotification(message: {
     notification: EMessageNotification;
     params: any;
   }) {
@@ -615,7 +624,7 @@ export class FiretellClient {
 
     // Heartbeat: session.ping → respond with session.pong
     if (notification === EMessageNotification.PING) {
-      this.keepAlive(params);
+      this._keepAlive(params);
       return;
     }
 
@@ -691,13 +700,13 @@ export class FiretellClient {
   /**
    * Parse incoming WebSocket messages (JSON-RPC 2.0)
    */
-  handleWebSocketMessage(event: string) {
+  private _handleWebSocketMessage(event: string) {
     try {
       const message = JSON.parse(event);
 
       // Server notification (no jsonrpc field, has notification field)
       if (message["notification"]) {
-        this.handleMessageNotification(message);
+        this._handleMessageNotification(message);
         return;
       }
 
@@ -754,7 +763,7 @@ export class FiretellClient {
    * Tracks missed heartbeats — if MAX_HEARTBEAT_MISS consecutive
    * pongs fail, triggers reconnection.
    */
-  private keepAlive(paramsFromServer: { timestamp?: number }) {
+  private _keepAlive(paramsFromServer: { timestamp?: number }) {
     if (!this.connected || !this.ws || !this.getSessionInfo()) {
       console.debug("Skipping keep-alive: not connected or no session");
       return;
@@ -792,15 +801,15 @@ export class FiretellClient {
     // Destroy all active calls
     this.activeCalls.forEach((call) => call.destroy());
     this.activeCalls.clear();
-    this.cleanupSession();
-    this.disconnect();
+    this._cleanupSession();
+    this._disconnect();
   }
 
   /**
    * Reconnect WebSocket with exponential backoff.
    * After reconnection, calls connect() then reconnectCalls() per ws-signaling spec.
    */
-  private reconnect() {
+  private _reconnect() {
     if (this.connected && this.ws) {
       console.debug("#reconnect::Already connected, no need to reconnect");
       return;
@@ -810,7 +819,7 @@ export class FiretellClient {
       return;
     }
 
-    this.disconnect();
+    this._disconnect();
     this.isReconnecting = true;
 
     this.retryWebsocket = (this.retryWebsocket || 0) + 1;
@@ -876,7 +885,7 @@ export class FiretellClient {
           clearTimeout(this.keepAliveTimeoutId);
           this.keepAliveTimeoutId = null;
         }
-        this.reconnect();
+        this._reconnect();
       };
 
       this.ws.onerror = (error) => {
@@ -885,12 +894,12 @@ export class FiretellClient {
       };
 
       this.ws.onmessage = (event) => {
-        this.handleWebSocketMessage(event.data);
+        this._handleWebSocketMessage(event.data);
       };
     }, delay);
   }
 
-  private disconnect() {
+  private _disconnect() {
     if (this.keepAliveTimeoutId) {
       clearTimeout(this.keepAliveTimeoutId);
       this.keepAliveTimeoutId = null;
@@ -914,7 +923,7 @@ export class FiretellClient {
    * @param jwt JWT token string
    * @returns Decoded payload or null if invalid
    */
-  private parseJwt(jwt: string): IJwtPayload | null {
+  private _parseJwt(jwt: string): IJwtPayload | null {
     try {
       const parts = jwt.split(".");
       if (parts.length < 2) {
