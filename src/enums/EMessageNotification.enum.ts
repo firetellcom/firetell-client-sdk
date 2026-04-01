@@ -1,9 +1,7 @@
 export enum EMessageNotification {
-    "CONNECT" = "connect",
-    "AUTH" = "auth",
-    "SESSION" = "session",
-    "PING" = "telcheap.ping",
-    "PONG" = "telcheap.pong",
+    "CONNECT" = "session.connect",
+    "PING" = "session.ping",
+    "PONG" = "session.pong",
     "CALL_STATE" = "call.state",
     "CALL_OFFER" = "call.offer",
     "CALL_REJECT" = "call.reject",
@@ -11,5 +9,10 @@ export enum EMessageNotification {
     "CALL_ANSWER" = "call.answer",
     "CALL_HOLD" = "call.hold",
     "CALL_UNHOLD" = "call.unhold",
-    "CALL_TRANSFER" = "call.transfer"
+    "CALL_TRANSFER" = "call.transfer",
+    "CALL_DTMF" = "call.dtmf",
+    "CALL_MUTE" = "call.mute",
+    "CALL_RECONNECT" = "call.reconnect",
+    "CALL_GET_OFFER" = "call.getOffer",
+    "AGENT_STATE" = "workspace.agent.state",
 }

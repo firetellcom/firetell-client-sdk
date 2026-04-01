@@ -3,4 +3,5 @@ export enum ECallEventName {
     "state" = "state",
     "localStream" = "localStream",
     "remoteStream" = "remoteStream",
+    "mute" = "mute",
 }
