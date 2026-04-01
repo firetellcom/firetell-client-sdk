@@ -199,10 +199,10 @@ export class FiretellClient {
 
   /**
    * Send login with username, password, domain
-   * This will return JWT with Audience client-api
+   * This will return JWT with Audience agent-api
    * @param username Agent username
    * @param password Agent password
-   * @param domain Workspace domain. Example: yourworkspace.telcheap.com
+   * @param domain Workspace domain. Example: yourworkspace.firetell.com
    */
   public async login(
     username: string,
@@ -215,22 +215,31 @@ export class FiretellClient {
     if (!domain) {
       return Promise.reject(new Error("domain is required"));
     }
+
+    // login with http call
+    const response = await fetch(`${this.baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        domain,
+      }),
+    });
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    this.jwt = data.access_token;
+    await this.connect();
     if (!this.connected) {
       return Promise.reject(
         new Error("Cannot login: WebSocket not connected")
       );
     }
-    try {
-      const result = await this.sendRPCMessage<{
-        access_token: string;
-        refresh_token: string;
-      }>(EMessageNotification.CONNECT, { username, password, domain });
-      this.jwt = result.access_token;
-      await this.connect();
-    } catch (error) {
-      this.cleanupSession();
-      throw error;
-    }
+    return Promise.resolve();
   }
 
   /**
