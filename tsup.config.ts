@@ -2,9 +2,9 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: ["src/index.ts"],
-  dts: true, 
+  dts: true,
   format: ["cjs", "esm", "iife"],
-  globalName: "Telcheap",
+  globalName: "Firetell",
   outDir: "dist",
   sourcemap: true,
   clean: true

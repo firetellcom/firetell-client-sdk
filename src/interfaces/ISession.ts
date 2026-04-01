@@ -3,6 +3,7 @@ export interface ISession {
     display_name: string;
     username: string;
     domain: string;
-    ext: string;
+    avatar?: string;
+    ext?: string;
     expires_at: number;
 }

@@ -1,282 +1,1044 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telcheap WebRTC Client</title>
+    <title>Firetell WebRTC Client — SDK Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="../dist/index.global.js"></script>
     <style>
-        video { width: 300px; border: 1px solid #000; }
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface-2: #242836;
+            --border: #2e3348;
+            --text: #e4e6f0;
+            --text-muted: #8b8fa3;
+            --primary: #6366f1;
+            --primary-hover: #818cf8;
+            --green: #22c55e;
+            --green-hover: #16a34a;
+            --red: #ef4444;
+            --red-hover: #dc2626;
+            --amber: #f59e0b;
+            --cyan: #06b6d4;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .app {
+            width: 100%;
+            max-width: 440px;
+            padding: 20px;
+        }
+
+        /* ── Header ───────────────────────────── */
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .header .badge {
+            display: inline-block;
+            margin-top: 6px;
+            font-size: 11px;
+            color: var(--text-muted);
+            background: var(--surface);
+            padding: 3px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        /* ── Cards ────────────────────────────── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow);
+        }
+
+        .card-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+        }
+
+        /* ── Forms ────────────────────────────── */
+        .input-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            color: var(--text);
+            outline: none;
+            transition: border-color .2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+        }
+
+        input[type="text"]::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* ── Buttons ──────────────────────────── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 10px 18px;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all .15s ease;
+            white-space: nowrap;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-hover);
+        }
+
+        .btn-green {
+            background: var(--green);
+            color: #fff;
+        }
+
+        .btn-green:hover:not(:disabled) {
+            background: var(--green-hover);
+        }
+
+        .btn-red {
+            background: var(--red);
+            color: #fff;
+        }
+
+        .btn-red:hover:not(:disabled) {
+            background: var(--red-hover);
+        }
+
+        .btn-ghost {
+            background: var(--surface-2);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-ghost:hover:not(:disabled) {
+            background: var(--border);
+        }
+
+        .btn-ghost.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .btn-sm {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+
+        .btn-icon {
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border-radius: 50%;
+            font-size: 18px;
+        }
+
+        .btn-icon.btn-lg {
+            width: 56px;
+            height: 56px;
+            font-size: 22px;
+        }
+
+        /* ── Status Indicators ────────────────── */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--surface-2);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .status-dot.online {
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+        }
+
+        .status-dot.error {
+            background: var(--red);
+            box-shadow: 0 0 6px var(--red);
+        }
+
+        .status-dot.warning {
+            background: var(--amber);
+            box-shadow: 0 0 6px var(--amber);
+        }
+
+        /* ── Call UI ──────────────────────────── */
+        .call-info {
+            text-align: center;
+            padding: 16px 0;
+        }
+
+        .call-info .caller-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .call-info .call-status {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .call-info .call-timer {
+            font-size: 28px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            margin-top: 8px;
+            color: var(--green);
+        }
+
+        .call-controls {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .call-controls .btn-icon {
+            position: relative;
+        }
+
+        .call-controls .btn-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .call-actions {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 36px;
+        }
+
+        /* ── DTMF Pad ─────────────────────────── */
+        .dtmf-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .dtmf-pad .btn {
+            font-size: 18px;
+            font-weight: 600;
+            padding: 14px;
+        }
+
+        /* ── Incoming Banner ──────────────────── */
+        .incoming-banner {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface);
+            border: 1px solid var(--primary);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            box-shadow: 0 8px 32px rgba(99, 102, 241, 0.25);
+            z-index: 100;
+            display: none;
+            min-width: 340px;
+            animation: slideDown .3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        .incoming-banner .caller {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .incoming-banner .sub {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .incoming-banner .actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .incoming-banner .actions .btn {
+            flex: 1;
+        }
+
+        /* ── Log Panel ────────────────────────── */
+        .log-panel {
+            background: var(--surface-2);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            max-height: 180px;
+            overflow-y: auto;
+            font-size: 11px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            line-height: 1.6;
+            color: var(--text-muted);
+        }
+
+        .log-panel::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .log-panel::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        .log-entry .time {
+            color: var(--text-muted);
+            opacity: 0.6;
+        }
+
+        .log-entry.error {
+            color: var(--red);
+        }
+
+        .log-entry.success {
+            color: var(--green);
+        }
+
+        .log-entry.warn {
+            color: var(--amber);
+        }
+
+        .log-entry.info {
+            color: var(--cyan);
+        }
+
+        /* ── Agent List ───────────────────────── */
+        .agent-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .agent-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--surface-2);
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        /* ── Utilities ────────────────────────── */
+        .hidden {
+            display: none !important;
+        }
+
+        .flex-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mt-12 {
+            margin-top: 12px;
+        }
+
+        .mt-8 {
+            margin-top: 8px;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-muted {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        /* ── Media elements (hidden audio) ────── */
+        audio {
+            display: none;
+        }
+
+        /* ── Transfer input ───────────────────── */
+        .transfer-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
     </style>
-   <script src="../dist/index.global.js"></script>
-     <!-- <script type="text/javascript" src="./sdk-js/dist/tellinker-client.bundle.js"></script> -->
-    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
-        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
-        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
-        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
-        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
 </head>
+
 <body>
-   
-    <div class="container">
-        <h1>WebRTC Client</h1>
-        <div id="login" class="d-block">
-
-            <label>token: </label>
-            <input type="text" id="token" placeholder="Nhập token của bạn" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFnZW50MSIsImRvbWFpbiI6ImRtdHNvbGFyMS5zaXAudGVsbGlua2VyLmNvbSIsImlhdCI6MTc1OTIxMTUyNywiZXhwIjoxNzU5Mjk3OTI3LCJhdWQiOiJhZ2VudC1hcGkiLCJpc3MiOiJTSURBSEZVWU83V0hGT1JWS1YiLCJzdWIiOiJBRzIxODIxMDIxIn0.HwQlwSfwwOaXdmSiYSXedl0NAWs3L8LCVUyrQDmoHuA">
-            <button class="btn btn-primary" onclick="initClient()">Login</button>
-
+    <div class="app">
+        <!-- ── Header ──────────────────────── -->
+        <div class="header">
+            <h1>🔥 Firetell WebRTC</h1>
+            <span class="badge" id="sdkVersion">SDK v—</span>
         </div>
-        <div id="dashboard" class="d-none">
-            <div class="row">
 
-                <div id="user"></div>
-                <div id="mediaState"></div>
-                <div id="callState"></div>
-        
-                <label>Call to: </label>
-                <input type="text" id="callee" placeholder="Nhập số đích">
-                
-                <div class="d-flex flex-row">
-                    <button class="btn btn-warning" onclick="makeCall()">Gọi Audio</button>
-                    <button class="btn btn-warning" onclick="makeCall(true)">Gọi Video</button>
-                    <button class="btn btn-warning" onclick="hangup()">Kết thúc</button>
+        <!-- ── Login Card ──────────────────── -->
+        <div id="loginCard" class="card">
+            <div class="card-title">Authentication</div>
+            <input type="text" id="tokenInput" placeholder="Paste your JWT token here…"
+                style="width:100%; margin-bottom: 10px;">
+            <input type="text" id="baseUrlInput" placeholder="API Base URL (optional)"
+                value="https://api.firetell.com/1.0" style="width:100%; margin-bottom: 12px;">
+            <button class="btn btn-primary" style="width: 100%;" onclick="initClient()">
+                Connect
+            </button>
+        </div>
 
-                    <button class="btn btn-warning" onclick="onhold()">Hold</button>
-                    <button class="btn btn-warning" onclick="unhold()">UnHold</button>
-
-                    <button class="btn btn-warning" onclick="transfer()">Transfer</button>
-                </div>
-
+        <!-- ── Session Card ────────────────── -->
+        <div id="sessionCard" class="card hidden">
+            <div class="card-title">Session</div>
+            <div class="status-bar">
+                <div class="status-dot" id="connStatusDot"></div>
+                <span id="connStatusText">Connecting…</span>
             </div>
-            <div class="row">
-                <div class="col-6">
-                    <h3>Local Video</h3>
-                    <video id="localStream" controls autoplay playsinline muted></video>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div style="font-weight:600; font-size:15px;" id="displayName">—</div>
+                    <div class="text-muted" id="sessionMeta">—</div>
                 </div>
-                <div class="col-6">
-                    <h3>Remote Video</h3>
-                    <video id="remoteStream" controls autoplay playsinline></video>
-                </div>
+                <button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button>
             </div>
         </div>
+
+        <!-- ── Agents Card ─────────────────── -->
+        <div id="agentsCard" class="card hidden">
+            <div class="card-title">Agents Online</div>
+            <div class="agent-list" id="agentList">
+                <span class="text-muted">No agents online</span>
+            </div>
+        </div>
+
+        <!-- ── Dialer Card ─────────────────── -->
+        <div id="dialerCard" class="card hidden">
+            <div class="card-title">Make a Call</div>
+            <div class="input-group">
+                <input type="text" id="calleeInput" placeholder="Number or username…">
+                <button class="btn btn-green" id="callBtn" onclick="makeCall()">📞 Call</button>
+                <button class="btn btn-primary" id="videoCallBtn" onclick="makeCall(true)">🎥</button>
+            </div>
+            <div class="input-group mt-8">
+                <input type="text" id="callerIdInput" placeholder="Caller ID (optional for external)">
+            </div>
+        </div>
+
+        <!-- ── Active Call Card ────────────── -->
+        <div id="callCard" class="card hidden">
+            <div class="card-title">Active Call</div>
+            <div class="call-info">
+                <div class="caller-name" id="callPeer">—</div>
+                <div class="call-status" id="callStatus">—</div>
+                <div class="call-timer" id="callTimer">00:00</div>
+            </div>
+
+            <!-- Call Controls -->
+            <div class="call-controls">
+                <div style="position:relative;">
+                    <button class="btn btn-icon btn-ghost" id="muteBtn" onclick="toggleMute()" disabled>
+                        🎤
+                    </button>
+                    <span class="btn-label">Mute</span>
+                </div>
+                <div style="position:relative;">
+                    <button class="btn btn-icon btn-ghost" id="holdBtn" onclick="toggleHold()" disabled>
+                        ⏸️
+                    </button>
+                    <span class="btn-label">Hold</span>
+                </div>
+                <div style="position:relative;">
+                    <button class="btn btn-icon btn-ghost" id="dtmfToggleBtn" onclick="toggleDtmfPad()">
+                        #️⃣
+                    </button>
+                    <span class="btn-label">DTMF</span>
+                </div>
+            </div>
+
+            <!-- DTMF Pad -->
+            <div class="dtmf-pad hidden" id="dtmfPad">
+                <button class="btn btn-ghost" onclick="sendDtmf('1')">1</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('2')">2</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('3')">3</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('4')">4</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('5')">5</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('6')">6</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('7')">7</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('8')">8</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('9')">9</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('*')">*</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('0')">0</button>
+                <button class="btn btn-ghost" onclick="sendDtmf('#')">#</button>
+            </div>
+
+            <!-- Transfer -->
+            <div class="transfer-row">
+                <input type="text" id="transferTarget" placeholder="Transfer to (username)…">
+                <button class="btn btn-ghost btn-sm" onclick="transferCall()">🔀 Transfer</button>
+            </div>
+
+            <!-- Hangup -->
+            <div class="call-actions">
+                <button class="btn btn-icon btn-lg btn-red" onclick="hangup()">📵</button>
+            </div>
+        </div>
+
+        <!-- ── Log Card ────────────────────── -->
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div class="card-title" style="margin:0;">Event Log</div>
+                <button class="btn btn-ghost btn-sm" onclick="clearLogs()" style="padding:4px 10px; font-size:11px;">
+                    Clear
+                </button>
+            </div>
+            <div class="log-panel" id="logPanel"></div>
+        </div>
+
+        <!-- ── Incoming Call Banner ────────── -->
+        <div class="incoming-banner" id="incomingBanner">
+            <div class="caller" id="incomingCaller">Unknown</div>
+            <div class="sub" id="incomingSub">Incoming call</div>
+            <div class="actions">
+                <button class="btn btn-green btn-sm" onclick="acceptIncoming()">✅ Accept</button>
+                <button class="btn btn-red btn-sm" onclick="rejectIncoming()">❌ Decline</button>
+            </div>
+        </div>
+
+        <!-- Hidden audio elements -->
+        <audio id="localAudio" autoplay muted></audio>
+        <audio id="remoteAudio" autoplay></audio>
     </div>
-    
 
     <script>
+        // ═══════════════════════════════════════
+        // State
+        // ═══════════════════════════════════════
+        let client = null;
+        let activeCall = null;
+        let incomingCall = null;
+        let callTimerInterval = null;
+        let callStartTime = null;
+        const agents = new Map(); // username → state
 
-        let client;
-        let session;
-        let activeCall;
-        const baseUrl = "https://api.telcheap.com/1.0";
-        
-        function initClient() {
-            
-            const token = document.getElementById('token').value;
+        // ═══════════════════════════════════════
+        // Init & Connect
+        // ═══════════════════════════════════════
+        async function initClient() {
+            const token = document.getElementById('tokenInput').value.trim();
+            const baseUrl = document.getElementById('baseUrlInput').value.trim();
+
             if (!token) {
-                alert('Vui lòng nhập token');
+                log('Token is required', 'error');
                 return;
             }
-            client = new Telcheap.TelcheapClient(token, baseUrl);
-            client.events.on('error', (error) => {
-                console.error("error: ", error);
-            });
+
+            try {
+                client = new Firetell.FiretellClient(token, baseUrl || undefined);
+                document.getElementById('sdkVersion').textContent = `SDK v${client.sdkVersion}`;
+
+                log('Initializing client…', 'info');
+                setupClientEvents();
+
+                const session = await client.ready;
+                log(`Authenticated as ${session.username}`, 'success');
+
+            } catch (error) {
+                log(`Init failed: ${error.message}`, 'error');
+            }
+        }
+
+        function setupClientEvents() {
+            // Session
             client.events.on('session', (session) => {
-                console.log('session', session);
-                if(session) {
-                    $("#login").removeClass("d-block").addClass("d-none")
-                    $("#dashboard").removeClass("d-none").addClass("d-block");
-                    $("#user").text("Connected: " + session.username + " | " + session.ext);
+                if (session) {
+                    setConnectionStatus('online', 'Connected');
+                    document.getElementById('displayName').textContent = session.display_name || session.username;
+                    document.getElementById('sessionMeta').textContent =
+                        `${session.username}@${session.domain}` + (session.ext ? ` • ext ${session.ext}` : '');
+
+                    show('sessionCard');
+                    show('dialerCard');
+                    show('agentsCard');
+                    hide('loginCard');
                 } else {
-
-                    $("#login").removeClass("d-none").addClass("d-block")
-                    $("#dashboard").removeClass("d-block").addClass("d-none")
-
+                    setConnectionStatus('error', 'Disconnected');
+                    hide('sessionCard');
+                    hide('dialerCard');
+                    hide('agentsCard');
+                    show('loginCard');
                 }
             });
+
+            // Error
+            client.events.on('error', (error) => {
+                log(`Error [${error.code}]: ${error.message}`, 'error');
+                if (error.code === 500) {
+                    setConnectionStatus('error', 'Connection lost');
+                }
+            });
+
+            // Incoming call
             client.events.on('call.offer', (call) => {
+                incomingCall = call;
+                const label = call.caller || call.number || 'Unknown';
+                document.getElementById('incomingCaller').textContent = `📞 ${label}`;
+                document.getElementById('incomingSub').textContent =
+                    call.isTransfer ? 'Transferred call' : 'Incoming call';
+                document.getElementById('incomingBanner').style.display = 'block';
+                log(`Incoming call from ${label}` + (call.isTransfer ? ' (transfer)' : ''), 'info');
 
-
-                console.log('Incoming call from:', call.caller, call.callId);
+                // Pre-bind state to handle CANCEL while ringing
                 call.on('state', (params) => {
-                    console.log('call state from client', params);
-                    if (['ENDED', 'ERROR', 'CANCEL'].includes(params.state)) {
-                        bootbox.hideAll();
-                        activeCall = null;
+                    if (['CANCEL', 'ENDED', 'ERROR'].includes(params.state)) {
+                        document.getElementById('incomingBanner').style.display = 'none';
+                        incomingCall = null;
+                        log(`Incoming call ${params.state}: ${params.reason || ''}`, 'warn');
                     }
                 });
+            });
 
-                // media
-                call.on("localStream", (stream) => {
-                    console.log("localStream event", stream);
-                    document.getElementById("localStream").srcObject = stream;
-                });
-                call.on("remoteStream", (stream) => {
-                    console.log("remoteStream event", stream);
-                    document.getElementById("remoteStream").srcObject = stream;
-                });
-                call.on('mediaState', (state) => {
+            // Mute notification from remote
+            client.events.on('call.mute', (params) => {
+                log(`${params.username} ${params.muted ? 'muted' : 'unmuted'} their mic`, 'info');
+            });
 
-                    console.log("ICE Connection State: ", state);
-                    document.getElementById('mediaState').textContent = `Media State: ${state}`;
+            // Agent presence
+            client.events.on('workspace.agent.state', (params) => {
+                const { username, state } = params;
+                if (state === 'available') {
+                    agents.set(username, state);
+                } else {
+                    agents.delete(username);
+                }
+                renderAgents();
+                log(`Agent ${username} → ${state}`, 'info');
+            });
 
-                })
-
-
-                // Notify user
-                bootbox.hideAll();
-                 bootbox.dialog({
-                message: "Incoming call from " + call.caller + "!",
-                title: "Incoming call",
-                closeButton: false,
-                buttons: {
-                  success: {
-                    label: "Answer",
-                    className: "btn-success",
-                    callback: function () {
-                        call.accept()
-                        .then((result) => { activeCall = call; })
-                        .catch((err) => console.error('Accept failed:', err));
-                    },
-                  },
-                  danger: {
-                    label: "Decline",
-                    className: "btn-danger",
-                    callback: function () {
-                        call.reject()
-                    },
-                  },
-                },
-              });
-            
-
+            // Reconnected
+            client.events.on('reconnected', (activeCalls) => {
+                setConnectionStatus('online', 'Reconnected');
+                log(`Reconnected — ${activeCalls.length} active call(s) restored`, 'success');
             });
         }
 
+        // ═══════════════════════════════════════
+        // Outbound Call
+        // ═══════════════════════════════════════
         async function makeCall(video = false) {
-            if (!client) initClient();
-            const callee = document.getElementById('callee').value;
+            const callee = document.getElementById('calleeInput').value.trim();
+            const callerId = document.getElementById('callerIdInput').value.trim();
+
             if (!callee) {
-                alert('destination number is required');
+                log('Destination is required', 'error');
+                return;
+            }
+            if (!client) {
+                log('Client not initialized', 'error');
+                return;
+            }
+
+            try {
+                const call = new Firetell.Call(client, {
+                    calleeId: callee,
+                    number: callerId || undefined,
+                    isVideo: video,
+                });
+
+                bindCallEvents(call, callee);
+                activeCall = call;
+
+                disableDialer(true);
+                log(`Calling ${callee}${video ? ' (video)' : ''}…`, 'info');
+
+                await call.start();
+                log(`Call started — ID: ${call.callId}`, 'success');
+
+            } catch (error) {
+                log(`Call failed: ${error.message}`, 'error');
+                activeCall = null;
+                disableDialer(false);
+            }
+        }
+
+        // ═══════════════════════════════════════
+        // Incoming Call
+        // ═══════════════════════════════════════
+        async function acceptIncoming() {
+            if (!incomingCall) return;
+            document.getElementById('incomingBanner').style.display = 'none';
+
+            const call = incomingCall;
+            incomingCall = null;
+
+            try {
+                bindCallEvents(call, call.caller || call.number || 'Unknown');
+                activeCall = call;
+                disableDialer(true);
+
+                await call.accept();
+                log('Call accepted', 'success');
+
+            } catch (error) {
+                log(`Accept failed: ${error.message}`, 'error');
+                activeCall = null;
+                disableDialer(false);
+            }
+        }
+
+        async function rejectIncoming() {
+            if (!incomingCall) return;
+            document.getElementById('incomingBanner').style.display = 'none';
+
+            try {
+                await incomingCall.reject();
+                log('Call rejected', 'warn');
+            } catch (error) {
+                log(`Reject failed: ${error.message}`, 'error');
+            }
+            incomingCall = null;
+        }
+
+        // ═══════════════════════════════════════
+        // Call Event Binding
+        // ═══════════════════════════════════════
+        function bindCallEvents(call, peerLabel) {
+            document.getElementById('callPeer').textContent = peerLabel;
+            updateCallStatus('Connecting…');
+
+            call.on('state', (params) => {
+                const { state, reason } = params;
+                log(`State → ${state}${reason ? ` (${reason})` : ''}`, 'info');
+                updateCallStatus(state);
+
+                if (state === 'RINGING') {
+                    updateCallStatus('Ringing…');
+                }
+                if (state === 'ACTIVE' || state === 'ANSWERED') {
+                    updateCallStatus('Connected');
+                    enableCallControls(true);
+                    startTimer();
+                }
+                if (['ENDED', 'ERROR', 'CANCEL'].includes(state)) {
+                    endCallUI(state, reason);
+                }
+            });
+
+            call.on('localStream', (stream) => {
+                document.getElementById('localAudio').srcObject = stream;
+                if (stream) log('Local stream ready', 'success');
+            });
+
+            call.on('remoteStream', (stream) => {
+                document.getElementById('remoteAudio').srcObject = stream;
+                if (stream) log('Remote stream ready', 'success');
+            });
+
+            call.on('mediaState', (state) => {
+                log(`ICE → ${state}`, state === 'connected' ? 'success' : 'info');
+            });
+
+            call.on('mute', (params) => {
+                log(`Local mic ${params.muted ? 'muted' : 'unmuted'}`, 'info');
+            });
+
+            // Show call card
+            show('callCard');
+            enableCallControls(false);
+        }
+
+        // ═══════════════════════════════════════
+        // Call Controls
+        // ═══════════════════════════════════════
+        async function hangup() {
+            if (!activeCall) return;
+            try {
+                await activeCall.hangup();
+            } catch (e) {
+                log(`Hangup error: ${e.message}`, 'error');
+            }
+        }
+
+        async function toggleMute() {
+            if (!activeCall) return;
+            try {
+                await activeCall.toggleMute();
+                const btn = document.getElementById('muteBtn');
+                btn.textContent = activeCall.isMuted ? '🔇' : '🎤';
+                btn.classList.toggle('active', activeCall.isMuted);
+            } catch (e) {
+                log(`Mute error: ${e.message}`, 'error');
+            }
+        }
+
+        async function toggleHold() {
+            if (!activeCall) return;
+            try {
+                if (activeCall.isHold) {
+                    await activeCall.unhold();
+                    log('Call resumed', 'success');
+                } else {
+                    await activeCall.onhold();
+                    log('Call on hold', 'warn');
+                }
+                const btn = document.getElementById('holdBtn');
+                btn.textContent = activeCall.isHold ? '▶️' : '⏸️';
+                btn.classList.toggle('active', activeCall.isHold);
+                updateCallStatus(activeCall.isHold ? 'On Hold' : 'Connected');
+            } catch (e) {
+                log(`Hold error: ${e.message}`, 'error');
+            }
+        }
+
+        function toggleDtmfPad() {
+            const pad = document.getElementById('dtmfPad');
+            pad.classList.toggle('hidden');
+            document.getElementById('dtmfToggleBtn').classList.toggle('active', !pad.classList.contains('hidden'));
+        }
+
+        async function sendDtmf(digit) {
+            if (!activeCall) return;
+            try {
+                await activeCall.sendDTMF(digit);
+                log(`DTMF: ${digit}`, 'info');
+            } catch (e) {
+                log(`DTMF error: ${e.message}`, 'error');
+            }
+        }
+
+        async function transferCall() {
+            if (!activeCall) return;
+            const target = document.getElementById('transferTarget').value.trim();
+            if (!target) {
+                log('Transfer target required', 'error');
                 return;
             }
             try {
-                const call = new Telcheap.Call(client, {
-                    number: '84978126124',
-                    callee: callee,
-                    isVideo: video
-                });
-
-                // listen to call state
-                call.on('state', (params) => {
-                    console.log('call state from client', params);
-                    if (['ENDED', 'ERROR', 'CANCEL'].includes(params.state)) {
-                        bootbox.hideAll();
-                        activeCall = null;
-                    }
-                });
-
-
-                // media stream
-                call.on("localStream", (stream) => {
-                    console.log("localStream event", stream);
-                    document.getElementById("localStream").srcObject = stream;
-                });
-                call.on("remoteStream", (stream) => {
-                    console.log("remoteStream event", stream);
-                    document.getElementById("remoteStream").srcObject = stream;
-                });
-
-                // media state
-                call.on('mediaState', (state) => {
-
-                    console.log("ICE Connection State: ", state);
-                    document.getElementById('mediaState').textContent = `Media State: ${state}`;
-
-                })
-                activeCall = call;
-                await call.start();
-                
-                console.log('make call success:', call);
-                 
-
-            } catch (error) {
-                console.error('make call error', error);
-                alert('Error: ' + error.message);
+                await activeCall.transfer(target);
+                log(`Transferred to ${target}`, 'success');
+            } catch (e) {
+                log(`Transfer error: ${e.message}`, 'error');
             }
-        }
-
-        async function hangup() {
-
-
-            try {
-                if(!activeCall) return;
-                await activeCall.hangup();
-                activeCall = null;
-            } catch (error) {
-                console.error('hangup', error);
-            }
-
-        }
-
-        async function onhold() {
-
-
-            try {
-                if(!activeCall) return;
-                await activeCall.onhold();
-            } catch (error) {
-                console.error('onhold', error);
-            }
-
-        }
-
-        async function unhold() {
-
-
-            try {
-                if(!activeCall) return;
-                await activeCall.unhold();
-            } catch (error) {
-                console.error('unhold', error);
-            }
-
-        }
-
-        async function transfer(callee = '1002') {
-
-
-            try {
-                if(!activeCall) return;
-                await activeCall.transfer(callee);
-                activeCall = null;
-            } catch (error) {
-                console.error('transfer', error);
-            }
-
         }
 
         function logout() {
-            if(!client) return;
-            client.logout();
-            client = null;
-            session = null;
+            if (client) {
+                client.logout();
+                client = null;
+            }
             activeCall = null;
+            agents.clear();
+            stopTimer();
+            hide('sessionCard');
+            hide('dialerCard');
+            hide('callCard');
+            hide('agentsCard');
+            show('loginCard');
+            setConnectionStatus('', 'Disconnected');
+            log('Logged out', 'warn');
         }
 
-        document.getElementById('token').addEventListener('keypress', (e) => {
+        // ═══════════════════════════════════════
+        // UI Helpers
+        // ═══════════════════════════════════════
+        function endCallUI(state, reason) {
+            updateCallStatus(`${state}${reason ? ' — ' + reason : ''}`);
+            stopTimer();
+            enableCallControls(false);
+            activeCall = null;
+            disableDialer(false);
+
+            // Hide call card after short delay
+            setTimeout(() => {
+                hide('callCard');
+                document.getElementById('dtmfPad').classList.add('hidden');
+                document.getElementById('muteBtn').textContent = '🎤';
+                document.getElementById('muteBtn').classList.remove('active');
+                document.getElementById('holdBtn').textContent = '⏸️';
+                document.getElementById('holdBtn').classList.remove('active');
+                document.getElementById('dtmfToggleBtn').classList.remove('active');
+            }, 2000);
+        }
+
+        function updateCallStatus(text) {
+            document.getElementById('callStatus').textContent = text;
+        }
+
+        function enableCallControls(enabled) {
+            document.getElementById('muteBtn').disabled = !enabled;
+            document.getElementById('holdBtn').disabled = !enabled;
+        }
+
+        function disableDialer(disabled) {
+            document.getElementById('callBtn').disabled = disabled;
+            document.getElementById('videoCallBtn').disabled = disabled;
+            document.getElementById('calleeInput').disabled = disabled;
+        }
+
+        function startTimer() {
+            callStartTime = Date.now();
+            callTimerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+                const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                const s = String(elapsed % 60).padStart(2, '0');
+                document.getElementById('callTimer').textContent = `${m}:${s}`;
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (callTimerInterval) {
+                clearInterval(callTimerInterval);
+                callTimerInterval = null;
+            }
+            document.getElementById('callTimer').textContent = '00:00';
+        }
+
+        function setConnectionStatus(state, text) {
+            const dot = document.getElementById('connStatusDot');
+            dot.className = 'status-dot' + (state ? ' ' + state : '');
+            document.getElementById('connStatusText').textContent = text;
+        }
+
+        function renderAgents() {
+            const container = document.getElementById('agentList');
+            if (agents.size === 0) {
+                container.innerHTML = '<span class="text-muted">No agents online</span>';
+                return;
+            }
+            container.innerHTML = Array.from(agents.keys()).map(name =>
+                `<span class="agent-tag"><span class="status-dot online" style="width:6px;height:6px;"></span>${name}</span>`
+            ).join('');
+        }
+
+        function show(id) { document.getElementById(id).classList.remove('hidden'); }
+        function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+        // ═══════════════════════════════════════
+        // Logger
+        // ═══════════════════════════════════════
+        function log(message, type = '') {
+            const panel = document.getElementById('logPanel');
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="time">${time}</span> ${message}`;
+            panel.appendChild(entry);
+            panel.scrollTop = panel.scrollHeight;
+
+            // Keep max 200 entries
+            while (panel.children.length > 200) {
+                panel.removeChild(panel.firstChild);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logPanel').innerHTML = '';
+        }
+
+        // ═══════════════════════════════════════
+        // Keyboard shortcuts
+        // ═══════════════════════════════════════
+        document.getElementById('tokenInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') initClient();
         });
 
-        document.getElementById('callee').addEventListener('keypress', (e) => {
+        document.getElementById('calleeInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') makeCall();
         });
+
+        // Log SDK load
+        log('Firetell SDK loaded — ready to connect', 'success');
     </script>
-
-
-
 </body>
+
 </html>
