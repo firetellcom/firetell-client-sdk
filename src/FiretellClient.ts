@@ -282,7 +282,7 @@ export class FiretellClient {
       throw new Error("domain is required");
     }
 
-    const response = await fetch(`${this.baseUrl}/api/auth/login`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
