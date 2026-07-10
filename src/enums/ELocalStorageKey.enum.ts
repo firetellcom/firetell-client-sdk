@@ -1,3 +1,3 @@
 export enum EStorageKey {
-    "deviceId" = "telcheap-device-id"
+    "deviceId" = "firetell-device-id"
 }

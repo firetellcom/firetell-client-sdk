@@ -178,7 +178,7 @@ new FiretellClient(jwt: string, baseUrl?: string)
 | Param     | Type     | Default                        | Description                  |
 | --------- | -------- | ------------------------------ | ---------------------------- |
 | `jwt`     | `string` | —                              | JWT token for authentication |
-| `baseUrl` | `string` | `https://api.firetell.com/1.0` | API base URL                 |
+| `baseUrl` | `string` | `https://yourcompany.firetell.app/api/v1` | API base URL                 |
 
 #### Properties
 
