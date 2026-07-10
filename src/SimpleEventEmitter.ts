@@ -14,6 +14,20 @@ export class SimpleEventEmitter<Events extends EventMap = EventMap> {
     this.listeners.get(event)!.push(listener as Listener);
   }
 
+  /**
+   * Subscribe to an event for a single emission only.
+   * The listener is automatically removed after first invocation.
+   */
+  once<K extends string & keyof Events>(event: K, listener: Listener<Events[K]>): void;
+  once(event: string, listener: Listener): void;
+  once(event: string, listener: Listener): void {
+    const wrapper: Listener = (data) => {
+      this.off(event, wrapper);
+      listener(data);
+    };
+    this.on(event, wrapper);
+  }
+
   off<K extends string & keyof Events>(event: K, listener: Listener<Events[K]>): void;
   off(event: string, listener: Listener): void;
   off(event: string, listener: Listener): void {
@@ -27,7 +41,8 @@ export class SimpleEventEmitter<Events extends EventMap = EventMap> {
   emit(event: string, data?: any): void {
     const arr = this.listeners.get(event);
     if (!arr) return;
-    arr.forEach(listener => listener(data));
+    // Iterate over a copy to avoid issues if listeners modify the array
+    [...arr].forEach(listener => listener(data));
   }
 
   offAll(): void {

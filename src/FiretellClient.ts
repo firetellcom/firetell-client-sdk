@@ -11,17 +11,50 @@ import { IJwtPayload } from "./interfaces/IJwtPayload";
 
 const SDK_VERSION = "1.0.0";
 
+/** JSON-RPC 2.0 request shape */
+interface IRPCRequest {
+  jsonrpc: "2.0";
+  method: string;
+  params: Record<string, unknown>;
+  id?: number;
+}
+
+/** Params for a call.state notification */
+interface ICallStateParams {
+  call_id: string;
+  state: ECallState;
+  sdp?: RTCSessionDescriptionInit;
+  reason?: string;
+}
+
+/** Params for a call.offer (incoming call) notification */
+interface ICallOfferParams {
+  call_id: string;
+  number: string;
+  sdp: RTCSessionDescriptionInit;
+  is_transfer?: boolean;
+  caller: string;
+}
+
+/** Params for a call.mute notification */
+interface ICallMuteParams {
+  call_id: string;
+  username: string;
+  muted: boolean;
+}
+
 export class FiretellClient {
-  public sdkVersion = SDK_VERSION;
+  public readonly sdkVersion = SDK_VERSION;
   private baseUrl = "";
-  private ws: WebSocket | null;
+  private ws: WebSocket | null = null;
   private jwt: string = "";
+  private jwtPayload: IJwtPayload | null = null;
   private wsServers: string[] = [];
   public iceServers: RTCIceServer[] = [];
   private transactionId: number = 1;
   private pendingTransactions = new Map<
     number,
-    { resolve: (value: any) => void; reject: (reason: any) => void }
+    { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
   >();
   private session: ISession | null = null;
   private keepAliveTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -30,13 +63,15 @@ export class FiretellClient {
   private retryWebsocket: number = 0;
   private retryWebsocketTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private isReconnecting: boolean = false;
+  private webRTCChecked: boolean = false;
+
   /**
-   * @event
-   * session, incomingCall, error, reconnected, workspace.agent.state
+   * @event session, incomingCall, error, reconnected, workspace.agent.state
    */
   public events = new SimpleEventEmitter();
   public isWebRTCSupport: boolean = false;
   public connected: boolean = false;
+
   /**
    * Promise that resolves when the client is fully initialized
    * (metadata fetched + WebSocket connected + session authenticated)
@@ -44,10 +79,23 @@ export class FiretellClient {
   public readonly ready: Promise<ISession>;
   private _resolveReady!: (session: ISession) => void;
   private _rejectReady!: (error: Error) => void;
+
   /**
    * Current active calls Map<call_id, Call>
    */
-  activeCalls = new Map<string, Call>();
+  public readonly activeCalls = new Map<string, Call>();
+
+  /** Notification handler map — eliminates if-else chain */
+  private readonly notificationHandlers = new Map<
+    EMessageNotification,
+    (params: Record<string, unknown>) => void
+  >([
+    [EMessageNotification.PING, (p) => this._keepAlive(p as { timestamp?: number })],
+    [EMessageNotification.CALL_STATE, (p) => this._handleCallState(p as unknown as ICallStateParams)],
+    [EMessageNotification.CALL_OFFER, (p) => this._handleIncomingCall(p as unknown as ICallOfferParams)],
+    [EMessageNotification.CALL_MUTE, (p) => this._handleCallMute(p as unknown as ICallMuteParams)],
+    [EMessageNotification.AGENT_STATE, (p) => this.events.emit(EClientEventName.AGENT_STATE, p)],
+  ]);
 
   /**
    * FiretellClient constructor
@@ -56,9 +104,10 @@ export class FiretellClient {
    */
   constructor(jwt: string, domain: string) {
     if (!jwt) throw new Error("jwt is required in constructor");
-    if (!this._parseJwt(jwt)) throw new Error("Invalid JWT");
+    const payload = this._parseJwt(jwt);
+    if (!payload) throw new Error("Invalid JWT");
     this.jwt = jwt;
-    this.ws = null;
+    this.jwtPayload = payload;
     this.ready = new Promise<ISession>((resolve, reject) => {
       this._resolveReady = resolve;
       this._rejectReady = reject;
@@ -67,10 +116,10 @@ export class FiretellClient {
     this._fetchWorkspaceMetadata();
   }
 
-  private _checkWorkspaceDomain(domain: string) {
+  private _checkWorkspaceDomain(domain: string): string {
     if (!domain) throw new Error("Workspace domain is required");
     // validate domain can start https:// or http:// or without protocol
-    // domain can't end with /    
+    // domain can't end with /
     if (domain.endsWith("/")) {
       domain = domain.slice(0, -1);
     }
@@ -83,7 +132,7 @@ export class FiretellClient {
     return domain;
   }
 
-  private async _fetchWorkspaceMetadata() {
+  private async _fetchWorkspaceMetadata(): Promise<void> {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1`, {
         headers: {
@@ -92,6 +141,9 @@ export class FiretellClient {
         },
         method: "GET",
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       const data = (await response.json()) as {
         ws_servers: string[];
         ice_servers: RTCIceServer[];
@@ -104,25 +156,36 @@ export class FiretellClient {
         "fetchWorkspaceMetadata::Error fetching workspace config:",
         error
       );
+      this._rejectReady(
+        error instanceof Error
+          ? error
+          : new Error("Failed to fetch workspace metadata")
+      );
     }
   }
 
+  /**
+   * Initialize or re-initialize the WebSocket connection.
+   * Used by both initial connect and reconnect flows — single source of truth.
+   */
   private _initWebSocket(): void {
-    this._checkWebRTCSupport().then(
-      (isSupport) => (this.isWebRTCSupport = isSupport)
-    );
+    if (!this.webRTCChecked) {
+      this.webRTCChecked = true;
+      this.isWebRTCSupport = this._checkWebRTCSupport();
+    }
 
-    // Select random wsServer
     const randomIndex = Math.floor(Math.random() * this.wsServers.length);
-    const wsUrl = `${this.wsServers[randomIndex]}`;
+    const wsUrl = this.wsServers[randomIndex];
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.debug(
-        "initWebSocket::WebSocket connected to:",
-        this.wsServers[randomIndex]
-      );
+      console.debug("WebSocket connected to:", wsUrl);
       this.connected = true;
+      this.retryWebsocket = 0;
+      if (this.retryWebsocketTimeoutId) {
+        clearTimeout(this.retryWebsocketTimeoutId);
+        this.retryWebsocketTimeoutId = null;
+      }
       if (this.jwt) {
         this.connect();
       }
@@ -130,7 +193,7 @@ export class FiretellClient {
 
     this.ws.onclose = () => {
       this.connected = false;
-      console.debug("initWebSocket::WebSocket closed");
+      console.debug("WebSocket closed");
       if (this.keepAliveTimeoutId) {
         clearTimeout(this.keepAliveTimeoutId);
         this.keepAliveTimeoutId = null;
@@ -139,7 +202,7 @@ export class FiretellClient {
     };
 
     this.ws.onerror = (error) => {
-      console.error("initWebSocket::WebSocket onerror:", error);
+      console.error("WebSocket error:", error);
       this.connected = false;
     };
 
@@ -149,7 +212,7 @@ export class FiretellClient {
   }
 
   /**
-   * Authenticate the WebSocket session with session.connect
+   * Authenticate the WebSocket session with session.connect.
    * Must be called within 5 seconds of connecting per server spec.
    */
   async connect(): Promise<ISession> {
@@ -186,20 +249,23 @@ export class FiretellClient {
       }
 
       return session;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err =
+        error instanceof Error ? error : new Error(String(error));
       this.events.emit(EClientEventName.ERROR, {
         code: 401,
-        message: error.message,
+        message: err.message,
       });
-      this._rejectReady(error);
+      this._rejectReady(err);
       this._cleanupSession();
-      throw error;
+      throw err;
     }
   }
 
   /**
-   * Send login with username, password, domain
-   * This will return JWT with Audience agent-api
+   * Send login with username, password, domain.
+   * Returns JWT with Audience agent-api.
+   * Automatically reconnects the WebSocket with the new token.
    * @param username Agent username
    * @param password Agent password
    * @param domain Workspace domain. Example: yourworkspace.firetell.com
@@ -210,36 +276,32 @@ export class FiretellClient {
     domain: string
   ): Promise<void> {
     if (!username || !password) {
-      return Promise.reject(new Error("Username and password are required"));
+      throw new Error("Username and password are required");
     }
     if (!domain) {
-      return Promise.reject(new Error("domain is required"));
+      throw new Error("domain is required");
     }
 
-    // login with http call
     const response = await fetch(`${this.baseUrl}/api/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        username,
-        password,
-        domain,
-      }),
+      body: JSON.stringify({ username, password, domain }),
     });
     const data = await response.json();
     if (data.error) {
       throw new Error(data.error);
     }
+
     this.jwt = data.access_token;
-    await this.connect();
-    if (!this.connected) {
-      return Promise.reject(
-        new Error("Cannot login: WebSocket not connected")
-      );
-    }
-    return Promise.resolve();
+    const payload = this._parseJwt(this.jwt);
+    if (!payload) throw new Error("Invalid JWT received from login");
+    this.jwtPayload = payload;
+
+    // Reconnect WebSocket with new JWT — _initWebSocket will call connect() on open
+    this._disconnect();
+    this._initWebSocket();
   }
 
   /**
@@ -254,38 +316,31 @@ export class FiretellClient {
     sdp: RTCSessionDescription
   ): Promise<string> {
     if (!(call instanceof Call)) {
-      return Promise.reject(new Error("Missing or invalid call instance"));
+      throw new Error("Missing or invalid call instance");
     }
     if (!sdp) {
-      return Promise.reject(new Error("Missing or invalid sdp"));
+      throw new Error("Missing or invalid sdp");
     }
     if (this.activeCalls.size > 0) {
-      return Promise.reject(
-        new Error(
-          "Cannot make a new call while another call is active. Please hang up or reject the current call."
-        )
+      throw new Error(
+        "Cannot make a new call while another call is active. Please hang up or reject the current call."
       );
     }
     if (!this.isWebRTCSupport) {
-      return Promise.reject(
-        new Error("WebRTC is not supported in this environment.")
-      );
+      throw new Error("WebRTC is not supported in this environment.");
     }
-    try {
-      const result = await this.sendRPCMessage<{ call_id: string }>(
-        EMessageNotification.CALL_OFFER,
-        {
-          to: call.calleeId,
-          sdp: sdp.sdp,
-          number: call.number,
-        }
-      );
-      call.callId = result.call_id;
-      this.activeCalls.set(result.call_id, call);
-      return result.call_id;
-    } catch (error) {
-      return Promise.reject(error);
-    }
+
+    const result = await this.sendRPCMessage<{ call_id: string }>(
+      EMessageNotification.CALL_OFFER,
+      {
+        to: call.calleeId,
+        sdp: sdp.sdp,
+        number: call.number,
+      }
+    );
+    call.callId = result.call_id;
+    this.activeCalls.set(result.call_id, call);
+    return result.call_id;
   }
 
   /**
@@ -297,18 +352,10 @@ export class FiretellClient {
     callId: string,
     sdp: RTCSessionDescriptionInit
   ): Promise<RTCSessionDescription> {
-    try {
-      const result = await this.sendRPCMessage<RTCSessionDescription>(
-        EMessageNotification.CALL_HOLD,
-        {
-          call_id: callId,
-          sdp: sdp,
-        }
-      );
-      return result;
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    return this.sendRPCMessage<RTCSessionDescription>(
+      EMessageNotification.CALL_HOLD,
+      { call_id: callId, sdp }
+    );
   }
 
   /**
@@ -320,18 +367,10 @@ export class FiretellClient {
     callId: string,
     sdp: RTCSessionDescriptionInit
   ): Promise<RTCSessionDescription> {
-    try {
-      const result = await this.sendRPCMessage<RTCSessionDescription>(
-        EMessageNotification.CALL_UNHOLD,
-        {
-          call_id: callId,
-          sdp: sdp,
-        }
-      );
-      return result;
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    return this.sendRPCMessage<RTCSessionDescription>(
+      EMessageNotification.CALL_UNHOLD,
+      { call_id: callId, sdp }
+    );
   }
 
   /**
@@ -339,14 +378,10 @@ export class FiretellClient {
    * @param callId call_id
    */
   async sendHangup(callId: string): Promise<void> {
-    try {
-      await this.sendRPCMessage(EMessageNotification.CALL_HANGUP, {
-        call_id: callId,
-      });
-      this.activeCalls.delete(callId);
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    await this.sendRPCMessage(EMessageNotification.CALL_HANGUP, {
+      call_id: callId,
+    });
+    this.activeCalls.delete(callId);
   }
 
   /**
@@ -358,18 +393,18 @@ export class FiretellClient {
     callId: string,
     sdp: RTCSessionDescription
   ): Promise<void> {
+    const call = this.activeCalls.get(callId);
+    if (!call) throw new Error("Call not in session");
     try {
-      const call = this.activeCalls.get(callId);
-      if (!call) return Promise.reject(new Error("Call not in session"));
       await this.sendRPCMessage(EMessageNotification.CALL_ANSWER, {
         call_id: callId,
-        sdp: sdp,
+        sdp,
         is_internal: call.isInternal || false,
         is_transfer: call.isTransfer || false,
       });
     } catch (error) {
       this.activeCalls.delete(callId);
-      return Promise.reject(error);
+      throw error;
     }
   }
 
@@ -378,14 +413,10 @@ export class FiretellClient {
    * @param callId call_id
    */
   async sendReject(callId: string): Promise<void> {
-    try {
-      await this.sendRPCMessage(EMessageNotification.CALL_REJECT, {
-        call_id: callId,
-      });
-      this.activeCalls.delete(callId);
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    await this.sendRPCMessage(EMessageNotification.CALL_REJECT, {
+      call_id: callId,
+    });
+    this.activeCalls.delete(callId);
   }
 
   /**
@@ -394,15 +425,11 @@ export class FiretellClient {
    * @param callee Username of the target agent
    */
   async sendTransfer(callId: string, callee: string): Promise<void> {
-    try {
-      await this.sendRPCMessage(EMessageNotification.CALL_TRANSFER, {
-        call_id: callId,
-        callee: callee,
-      });
-      this.activeCalls.delete(callId);
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    await this.sendRPCMessage(EMessageNotification.CALL_TRANSFER, {
+      call_id: callId,
+      callee,
+    });
+    this.activeCalls.delete(callId);
   }
 
   /**
@@ -417,19 +444,13 @@ export class FiretellClient {
     duration: number = 250
   ): Promise<void> {
     if (!/^[0-9A-D*#]$/.test(digit)) {
-      return Promise.reject(
-        new Error("Invalid DTMF digit. Must be 0-9, A-D, *, or #")
-      );
+      throw new Error("Invalid DTMF digit. Must be 0-9, A-D, *, or #");
     }
-    try {
-      await this.sendRPCMessage(EMessageNotification.CALL_DTMF, {
-        call_id: callId,
-        digit: digit,
-        duration: duration,
-      });
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    await this.sendRPCMessage(EMessageNotification.CALL_DTMF, {
+      call_id: callId,
+      digit,
+      duration,
+    });
   }
 
   /**
@@ -439,14 +460,10 @@ export class FiretellClient {
    * @param muted Whether the microphone is muted
    */
   async sendMute(callId: string, muted: boolean): Promise<void> {
-    try {
-      await this.sendRPCMessage(EMessageNotification.CALL_MUTE, {
-        call_id: callId,
-        muted: muted,
-      });
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    await this.sendRPCMessage(EMessageNotification.CALL_MUTE, {
+      call_id: callId,
+      muted,
+    });
   }
 
   /**
@@ -481,7 +498,7 @@ export class FiretellClient {
    */
   sendRPCMessage<T>(
     method: string,
-    params = {},
+    params: Record<string, unknown> = {},
     callback = true
   ): Promise<T> {
     // Only session.connect is allowed without a valid session
@@ -496,7 +513,7 @@ export class FiretellClient {
       }
     }
     return new Promise((resolve, reject) => {
-      const request = {
+      const request: IRPCRequest = {
         jsonrpc: "2.0",
         method,
         params,
@@ -515,11 +532,11 @@ export class FiretellClient {
         }, timeoutMs);
 
         this.pendingTransactions.set(request.id!, {
-          resolve: (result: T) => {
+          resolve: (result: unknown) => {
             clearTimeout(timeoutId);
-            resolve(result);
+            resolve(result as T);
           },
-          reject: (error: IRPCMessageError) => {
+          reject: (error: unknown) => {
             clearTimeout(timeoutId);
             reject(error);
           },
@@ -541,6 +558,13 @@ export class FiretellClient {
 
   public getSessionInfo(): ISession | null {
     return this.session;
+  }
+
+  /**
+   * Get the decoded JWT payload
+   */
+  public getJwtPayload(): IJwtPayload | null {
+    return this.jwtPayload;
   }
 
   /**
@@ -566,28 +590,34 @@ export class FiretellClient {
   /**
    * Send WebSocket request
    */
-  private _sendWebsocket(request: any): Promise<number | undefined> {
+  private _sendWebsocket(request: IRPCRequest): Promise<number | undefined> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(request));
       return Promise.resolve(request.id);
-    } else {
-      return Promise.reject(new Error("WebSocket is not connected"));
     }
+    return Promise.reject(new Error("WebSocket is not connected"));
   }
 
   private _generateTransactionId(): number {
+    // Reset to prevent overflow beyond Number.MAX_SAFE_INTEGER
+    if (this.transactionId >= Number.MAX_SAFE_INTEGER) {
+      this.transactionId = 1;
+    }
     return this.transactionId++;
   }
 
   private _generateDeviceId(): string {
-    const uuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
-      /[xy]/g,
-      function (c) {
-        const r = (Math.random() * 16) | 0;
-        const v = c === "x" ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      }
-    );
+    const uuid =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+            /[xy]/g,
+            function (c) {
+              const r = (Math.random() * 16) | 0;
+              const v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            }
+          );
     localStorage.setItem(EStorageKey.deviceId, uuid);
     return uuid;
   }
@@ -596,7 +626,10 @@ export class FiretellClient {
     return /m=video/.test(sdp.sdp || "");
   }
 
-  private _checkWebRTCSupport(): Promise<boolean> {
+  /**
+   * Check WebRTC support synchronously
+   */
+  private _checkWebRTCSupport(): boolean {
     const hasRTCPeerConnection = !!window.RTCPeerConnection;
     const hasGetUserMedia = !!(
       navigator.mediaDevices && navigator.mediaDevices.getUserMedia
@@ -608,99 +641,98 @@ export class FiretellClient {
         code: 606,
         message: errorMsg,
       });
-      return Promise.resolve(false);
+      return false;
     }
-    return Promise.resolve(true);
+    return true;
+  }
+
+  // ─── Notification handlers ────────────────────────────────────────────
+
+  /**
+   * Handle call.state notification
+   */
+  private _handleCallState(params: ICallStateParams): void {
+    const { call_id, state, sdp, reason } = params;
+    const call = this.activeCalls.get(call_id);
+    if (!call) {
+      console.debug(
+        `call ${call_id} with state ${state} not found in this session`
+      );
+      return;
+    }
+
+    // Set remote SDP BEFORE processing terminal states,
+    // because destroy() closes the peerConnection
+    if (sdp) {
+      call.setRemoteDescription(sdp as RTCSessionDescription);
+    }
+    call.setSignalState(state, params);
+
+    if (
+      [ECallState.ENDED, ECallState.ERROR, ECallState.CANCEL].includes(state)
+    ) {
+      this.activeCalls.delete(call_id);
+      call.active = false;
+      call.destroy();
+      if (state === ECallState.CANCEL) {
+        console.debug(`call ${call_id} state is CANCEL with reason ${reason}`);
+      }
+    }
   }
 
   /**
-   * Handle server notification messages
+   * Handle incoming call.offer notification
+   */
+  private _handleIncomingCall(params: ICallOfferParams): void {
+    const { call_id, number, sdp, is_transfer, caller } = params;
+    const call = new Call(this, {
+      number,
+      caller,
+      calleeId: this.getSessionInfo()?.username || "",
+      isVideo: this.isVideoCall(sdp),
+      isTransfer: is_transfer || false,
+    });
+    call.callId = call_id;
+    call.remoteDescription = sdp;
+
+    this.activeCalls.set(call_id, call);
+    this.events.emit(EClientEventName.CALL_OFFER, call);
+  }
+
+  /**
+   * Handle call.mute notification from another participant
+   */
+  private _handleCallMute(params: ICallMuteParams): void {
+    const { call_id, username, muted } = params;
+    const call = this.activeCalls.get(call_id);
+    if (call) {
+      call.emit("mute", { username, muted });
+    }
+    this.events.emit(EClientEventName.CALL_MUTE, params);
+  }
+
+  // ─── Message routing ──────────────────────────────────────────────────
+
+  /**
+   * Handle server notification messages using handler map
    */
   private _handleMessageNotification(message: {
     notification: EMessageNotification;
-    params: any;
-  }) {
+    params: Record<string, unknown>;
+  }): void {
     const { notification, params } = message;
-
-    // Heartbeat: session.ping → respond with session.pong
-    if (notification === EMessageNotification.PING) {
-      this._keepAlive(params);
-      return;
-    }
-
-    // Call state change notification
-    if (notification === EMessageNotification.CALL_STATE) {
-      const { call_id, state, sdp, reason } = params;
-      const call = this.activeCalls.get(call_id);
-      if (call) {
-        // Set remote SDP BEFORE processing terminal states,
-        // because destroy() closes the peerConnection
-        if (sdp) {
-          call.setRemoteDescription(sdp as RTCSessionDescription);
-        }
-        call.setSignalState(state, params);
-        if (
-          [ECallState.ENDED, ECallState.ERROR, ECallState.CANCEL].includes(
-            state
-          )
-        ) {
-          this.activeCalls.delete(call_id);
-          call.active = false;
-          call.destroy();
-          if (state === ECallState.CANCEL) {
-            console.debug(
-              `call ${call_id} state is CANCEL with reason ${reason}`
-            );
-          }
-        }
-      } else {
-        console.debug(
-          `call ${call_id} with state ${state} not found in this session`
-        );
-      }
-      return;
-    }
-
-    // Incoming call notification
-    if (notification === EMessageNotification.CALL_OFFER) {
-      const { call_id, number, sdp, is_transfer, caller } = params;
-      const call = new Call(this, {
-        number: number,
-        caller: caller,
-        calleeId: this.getSessionInfo()?.username || "",
-        isVideo: this.isVideoCall(sdp),
-        isTransfer: is_transfer || false,
-      });
-      call.callId = call_id;
-      call.remoteDescription = sdp;
-
-      this.activeCalls.set(call_id, call);
-      this.events.emit(EClientEventName.CALL_OFFER, call);
-      return;
-    }
-
-    // Mute notification from another participant
-    if (notification === EMessageNotification.CALL_MUTE) {
-      const { call_id, username, muted } = params;
-      const call = this.activeCalls.get(call_id);
-      if (call) {
-        call.emit("mute", { username, muted });
-      }
-      this.events.emit(EClientEventName.CALL_MUTE, params);
-      return;
-    }
-
-    // Agent online/offline status
-    if (notification === EMessageNotification.AGENT_STATE) {
-      this.events.emit(EClientEventName.AGENT_STATE, params);
-      return;
+    const handler = this.notificationHandlers.get(notification);
+    if (handler) {
+      handler(params);
+    } else {
+      console.debug(`Unhandled notification: ${notification}`);
     }
   }
 
   /**
    * Parse incoming WebSocket messages (JSON-RPC 2.0)
    */
-  private _handleWebSocketMessage(event: string) {
+  private _handleWebSocketMessage(event: string): void {
     try {
       const message = JSON.parse(event);
 
@@ -758,12 +790,14 @@ export class FiretellClient {
     }
   }
 
+  // ─── Heartbeat ────────────────────────────────────────────────────────
+
   /**
    * Respond to server heartbeat ping with session.pong.
    * Tracks missed heartbeats — if MAX_HEARTBEAT_MISS consecutive
    * pongs fail, triggers reconnection.
    */
-  private _keepAlive(paramsFromServer: { timestamp?: number }) {
+  private _keepAlive(paramsFromServer: { timestamp?: number }): void {
     if (!this.connected || !this.ws || !this.getSessionInfo()) {
       console.debug("Skipping keep-alive: not connected or no session");
       return;
@@ -797,8 +831,13 @@ export class FiretellClient {
     );
   }
 
-  public logout() {
-    // Destroy all active calls
+  // ─── Lifecycle ────────────────────────────────────────────────────────
+
+  /**
+   * Logout and cleanup all resources.
+   * Destroys active calls, clears session, and disconnects WebSocket.
+   */
+  public logout(): void {
     this.activeCalls.forEach((call) => call.destroy());
     this.activeCalls.clear();
     this._cleanupSession();
@@ -806,10 +845,38 @@ export class FiretellClient {
   }
 
   /**
-   * Reconnect WebSocket with exponential backoff.
-   * After reconnection, calls connect() then reconnectCalls() per ws-signaling spec.
+   * Fully destroy the client instance.
+   * Cleans up all timers, connections, calls and listeners.
+   * Use this when you want to dispose of the SDK without sending logout to the server.
    */
-  private _reconnect() {
+  public destroy(): void {
+    // Clear reconnect timer
+    if (this.retryWebsocketTimeoutId) {
+      clearTimeout(this.retryWebsocketTimeoutId);
+      this.retryWebsocketTimeoutId = null;
+    }
+
+    // Destroy all active calls
+    this.activeCalls.forEach((call) => call.destroy());
+    this.activeCalls.clear();
+
+    // Disconnect WebSocket
+    this._disconnect();
+
+    // Clear session & auth state
+    this.session = null;
+    this.jwtPayload = null;
+    this.jwt = "";
+
+    // Remove all event listeners
+    this.events.offAll();
+  }
+
+  /**
+   * Reconnect WebSocket with exponential backoff.
+   * Reuses _initWebSocket() to avoid handler duplication.
+   */
+  private _reconnect(): void {
     if (this.connected && this.ws) {
       console.debug("#reconnect::Already connected, no need to reconnect");
       return;
@@ -857,49 +924,11 @@ export class FiretellClient {
         console.debug("#reconnect::Already connected, skipping");
         return;
       }
-
-      const randomIndex = Math.floor(Math.random() * this.wsServers.length);
-      const wsUrl = `${this.wsServers[randomIndex]}`;
-      this.ws = new WebSocket(wsUrl);
-
-      this.ws.onopen = async () => {
-        console.debug(
-          "#reconnect::WebSocket reconnected to:",
-          this.wsServers[randomIndex]
-        );
-        this.connected = true;
-        if (this.retryWebsocketTimeoutId) {
-          clearTimeout(this.retryWebsocketTimeoutId);
-          this.retryWebsocketTimeoutId = null;
-        }
-        this.retryWebsocket = 0;
-        if (this.jwt) {
-          this.connect();
-        }
-      };
-
-      this.ws.onclose = () => {
-        this.connected = false;
-        console.debug("#reconnect::WebSocket disconnected");
-        if (this.keepAliveTimeoutId) {
-          clearTimeout(this.keepAliveTimeoutId);
-          this.keepAliveTimeoutId = null;
-        }
-        this._reconnect();
-      };
-
-      this.ws.onerror = (error) => {
-        console.error("#reconnect::WebSocket error:", error);
-        this.connected = false;
-      };
-
-      this.ws.onmessage = (event) => {
-        this._handleWebSocketMessage(event.data);
-      };
+      this._initWebSocket();
     }, delay);
   }
 
-  private _disconnect() {
+  private _disconnect(): void {
     if (this.keepAliveTimeoutId) {
       clearTimeout(this.keepAliveTimeoutId);
       this.keepAliveTimeoutId = null;
