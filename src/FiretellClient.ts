@@ -85,7 +85,7 @@ export class FiretellClient {
 
   private async _fetchWorkspaceMetadata() {
     try {
-      const response = await fetch(`${this.baseUrl}/api`, {
+      const response = await fetch(`${this.baseUrl}/api/v1`, {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.jwt}`,
