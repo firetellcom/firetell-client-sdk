@@ -988,7 +988,7 @@ export class FiretellClient {
 
       const decoded: IJwtPayload = JSON.parse(jsonString);
 
-      if (decoded.username && decoded.domain) {
+      if (decoded.sub && decoded.domain) {
         return decoded;
       } else {
         console.error("parseJwt::Invalid payload structure", decoded);

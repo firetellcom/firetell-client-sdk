@@ -1,8 +1,7 @@
 export interface IJwtPayload {
-  username: string;
   domain: string;
   exp: number;
   iss: string;
-  aud: string;
+  aud: "agent-api" | "client-api";
   sub: string;
-}
+}``
