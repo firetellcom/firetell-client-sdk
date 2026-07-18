@@ -175,9 +175,9 @@ await call.hangup();
 new FiretellClient(jwt: string, baseUrl?: string)
 ```
 
-| Param     | Type     | Default                        | Description                  |
-| --------- | -------- | ------------------------------ | ---------------------------- |
-| `jwt`     | `string` | —                              | JWT token for authentication |
+| Param     | Type     | Default                                   | Description                  |
+| --------- | -------- | ----------------------------------------- | ---------------------------- |
+| `jwt`     | `string` | —                                         | JWT token for authentication |
 | `baseUrl` | `string` | `https://yourcompany.firetell.app/api/v1` | API base URL                 |
 
 #### Properties
@@ -296,6 +296,7 @@ enum ECallState {
   ENDED,
   ERROR,
   CANCEL,
+  NONE,
 }
 
 enum EClientEventName {
@@ -363,7 +364,7 @@ See [`example/index.html`](example/index.html) for a complete browser example wi
 - SDK supports one active call at a time
 - Valid JWT token is required — must contain `username` and `domain`
 - Camera/microphone permissions must be granted
-- SDP must include all ICE candidates (Full ICE, not Trickle) — FreeSwitch requirement
+- SDP must include all ICE candidates (Full ICE, not Trickle) — Media server requirement
 
 ## Build
 
@@ -373,7 +374,7 @@ npm run build    # Outputs CJS, ESM, IIFE + type definitions to dist/
 
 ## License
 
-ISC
+MIT — see [LICENSE](LICENSE) for details.
 
 ## Support
 

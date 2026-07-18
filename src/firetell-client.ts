@@ -1,13 +1,14 @@
-import { SimpleEventEmitter } from "./SimpleEventEmitter";
-import { Call } from "./Call";
-import { ISession } from "./interfaces/ISession";
-import { IRPCMessageError } from "./interfaces/IRPCMessageResult";
-import { IActiveCall } from "./interfaces/IActiveCall";
-import { EMessageNotification } from "./enums/EMessageNotification.enum";
-import { ECallState } from "./enums/ECallState.enum";
-import { EClientEventName } from "./enums/EClientEventName.enum";
-import { EStorageKey } from "./enums/ELocalStorageKey.enum";
-import { IJwtPayload } from "./interfaces/IJwtPayload";
+import { SimpleEventEmitter } from "./simple-event-emitter";
+import { Call } from "./call";
+import { ISession } from "./interfaces/session.interface";
+import { IRPCMessageError } from "./interfaces/rpc-message.interface";
+import { IActiveCall } from "./interfaces/active-call.interface";
+import { EMessageNotification } from "./enums/message-notification.enum";
+import { ECallState } from "./enums/call-state.enum";
+import { EClientEventName } from "./enums/client-event-name.enum";
+import { EStorageKey } from "./enums/storage-key.enum";
+import { IJwtPayload } from "./interfaces/jwt-payload.interface";
+import { API_ENDPOINTS } from "./constants/api-endpoints";
 
 const SDK_VERSION = "1.0.0";
 
@@ -134,7 +135,7 @@ export class FiretellClient {
 
   private async _fetchWorkspaceMetadata(): Promise<void> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.WORKSPACE_METADATA}`, {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.jwt}`,
@@ -215,9 +216,9 @@ export class FiretellClient {
    * Authenticate the WebSocket session with session.connect.
    * Must be called within 5 seconds of connecting per server spec.
    */
-  async connect(): Promise<ISession> {
+  public async connect(): Promise<ISession> {
     const deviceId =
-      localStorage.getItem(EStorageKey.deviceId) || this._generateDeviceId();
+      localStorage.getItem(EStorageKey.DEVICE_ID) || this._generateDeviceId();
     const device = {
       sdk_version: this.sdkVersion,
       user_agent: navigator.userAgent || "Unknown",
@@ -282,7 +283,7 @@ export class FiretellClient {
       throw new Error("domain is required");
     }
 
-    const response = await fetch(`${this.baseUrl}/api/v1/auth/login`, {
+    const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.AUTH_LOGIN}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -348,7 +349,7 @@ export class FiretellClient {
    * @param callId call_id
    * @param sdp RTCSessionDescriptionInit
    */
-  async sendHold(
+  public async sendHold(
     callId: string,
     sdp: RTCSessionDescriptionInit
   ): Promise<RTCSessionDescription> {
@@ -363,7 +364,7 @@ export class FiretellClient {
    * @param callId call_id
    * @param sdp RTCSessionDescriptionInit
    */
-  async sendUnHold(
+  public async sendUnHold(
     callId: string,
     sdp: RTCSessionDescriptionInit
   ): Promise<RTCSessionDescription> {
@@ -377,7 +378,7 @@ export class FiretellClient {
    * Send Hangup
    * @param callId call_id
    */
-  async sendHangup(callId: string): Promise<void> {
+  public async sendHangup(callId: string): Promise<void> {
     await this.sendRPCMessage(EMessageNotification.CALL_HANGUP, {
       call_id: callId,
     });
@@ -389,7 +390,7 @@ export class FiretellClient {
    * @param callId call_id
    * @param sdp RTCSessionDescription (answer SDP)
    */
-  async sendAccept(
+  public async sendAccept(
     callId: string,
     sdp: RTCSessionDescription
   ): Promise<void> {
@@ -412,7 +413,7 @@ export class FiretellClient {
    * Send Reject (reject an incoming call)
    * @param callId call_id
    */
-  async sendReject(callId: string): Promise<void> {
+  public async sendReject(callId: string): Promise<void> {
     await this.sendRPCMessage(EMessageNotification.CALL_REJECT, {
       call_id: callId,
     });
@@ -424,7 +425,7 @@ export class FiretellClient {
    * @param callId call_id
    * @param callee Username of the target agent
    */
-  async sendTransfer(callId: string, callee: string): Promise<void> {
+  public async sendTransfer(callId: string, callee: string): Promise<void> {
     await this.sendRPCMessage(EMessageNotification.CALL_TRANSFER, {
       call_id: callId,
       callee,
@@ -438,7 +439,7 @@ export class FiretellClient {
    * @param digit Single digit: 0-9, *, #, A-D
    * @param duration Duration in ms (default: 250)
    */
-  async sendDTMF(
+  public async sendDTMF(
     callId: string,
     digit: string,
     duration: number = 250
@@ -459,7 +460,7 @@ export class FiretellClient {
    * @param callId call_id
    * @param muted Whether the microphone is muted
    */
-  async sendMute(callId: string, muted: boolean): Promise<void> {
+  public async sendMute(callId: string, muted: boolean): Promise<void> {
     await this.sendRPCMessage(EMessageNotification.CALL_MUTE, {
       call_id: callId,
       muted,
@@ -496,7 +497,7 @@ export class FiretellClient {
   /**
    * Send a JSON-RPC 2.0 message via WebSocket
    */
-  sendRPCMessage<T>(
+  public sendRPCMessage<T>(
     method: string,
     params: Record<string, unknown> = {},
     callback = true
@@ -504,12 +505,10 @@ export class FiretellClient {
     // Only session.connect is allowed without a valid session
     if (method !== EMessageNotification.CONNECT) {
       if (!this._checkSessionValidity()) {
-        return Promise.reject(
-          new Error("Session expired. Please login again.")
-        );
+        throw new Error("Session expired. Please login again.");
       }
       if (!this.getSessionInfo()) {
-        return Promise.reject(new Error("User not connected"));
+        throw new Error("User not connected");
       }
     }
     return new Promise((resolve, reject) => {
@@ -618,7 +617,7 @@ export class FiretellClient {
               return v.toString(16);
             }
           );
-    localStorage.setItem(EStorageKey.deviceId, uuid);
+    localStorage.setItem(EStorageKey.DEVICE_ID, uuid);
     return uuid;
   }
 
@@ -666,7 +665,7 @@ export class FiretellClient {
     if (sdp) {
       call.setRemoteDescription(sdp as RTCSessionDescription);
     }
-    call.setSignalState(state, params);
+    call.setSignalState(state, params as unknown as Record<string, unknown>);
 
     if (
       [ECallState.ENDED, ECallState.ERROR, ECallState.CANCEL].includes(state)
@@ -988,7 +987,7 @@ export class FiretellClient {
 
       const decoded: IJwtPayload = JSON.parse(jsonString);
 
-      if (decoded.username && decoded.domain) {
+      if (decoded.sub && decoded.domain) {
         return decoded;
       } else {
         console.error("parseJwt::Invalid payload structure", decoded);

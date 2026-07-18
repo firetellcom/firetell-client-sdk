@@ -1,27 +1,50 @@
 {
   "name": "@firetell/firetell-client-sdk",
   "version": "1.0.0",
-  "description": "",
+  "description": "TypeScript/JavaScript SDK for Firetell WebRTC — make and receive audio/video calls via WebRTC signaling over WebSocket (JSON-RPC 2.0)",
   "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
   "scripts": {
     "build": "tsup",
+    "lint": "eslint src/",
     "prepublishOnly": "npm run build"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "author": "developers@firetell.com",
-  "license": "ISC",
+  "license": "MIT",
   "keywords": [
     "sip",
     "webrtc",
     "voip",
-    "firetell"
+    "firetell",
+    "websocket",
+    "json-rpc",
+    "telephony",
+    "sdk"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/firetellcom/firetell-client-sdk.git"
+  },
+  "homepage": "https://github.com/firetellcom/firetell-client-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/firetellcom/firetell-client-sdk/issues"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

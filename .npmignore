@@ -1,0 +1,22 @@
+# Source files
+src/
+tsconfig.json
+tsup.config.ts
+eslint.config.mts
+
+# Development
+.agents/
+.vscode/
+.git/
+.gitignore
+
+# Example & docs
+example/
+docs/
+ws-signaling.md
+
+# Other
+*.map
+node_modules/
+coverage/
+.DS_Store

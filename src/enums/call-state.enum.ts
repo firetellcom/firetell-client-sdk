@@ -8,4 +8,5 @@ export enum ECallState {
   'ENDED' = 'ENDED',
   'ERROR' = 'ERROR',
   'CANCEL' = 'CANCEL',
+  'NONE' = 'NONE',
 }
