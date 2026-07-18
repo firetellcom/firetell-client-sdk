@@ -296,6 +296,7 @@ enum ECallState {
   ENDED,
   ERROR,
   CANCEL,
+  NONE,
 }
 
 enum EClientEventName {
@@ -373,7 +374,7 @@ npm run build    # Outputs CJS, ESM, IIFE + type definitions to dist/
 
 ## License
 
-ISC
+MIT — see [LICENSE](LICENSE) for details.
 
 ## Support
 

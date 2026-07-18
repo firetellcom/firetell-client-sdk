@@ -4,4 +4,4 @@ export interface IJwtPayload {
   iss: string;
   aud: "agent-api" | "client-api";
   sub: string;
-}``
+}

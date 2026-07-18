@@ -1,7 +1,7 @@
 export enum ECallEventName {
-    "mediaState" = "mediaState",
-    "state" = "state",
-    "localStream" = "localStream",
-    "remoteStream" = "remoteStream",
-    "mute" = "mute",
+    MEDIA_STATE = "mediaState",
+    STATE = "state",
+    LOCAL_STREAM = "localStream",
+    REMOTE_STREAM = "remoteStream",
+    MUTE = "mute",
 }

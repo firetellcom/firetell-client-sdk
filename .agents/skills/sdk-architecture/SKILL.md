@@ -16,22 +16,24 @@ description: >
 
 ```
 src/
-├── FiretellClient.ts          # Main signaling client (WebSocket, JSON-RPC, session management)
-├── Call.ts                     # WebRTC call instance (media, SDP, call control)
-├── SimpleEventEmitter.ts       # Lightweight typed event emitter with on/once/off/emit/offAll
+├── firetell-client.ts          # Main signaling client (WebSocket, JSON-RPC, session management)
+├── call.ts                     # WebRTC call instance (media, SDP, call control)
+├── simple-event-emitter.ts     # Lightweight typed event emitter with on/once/off/emit/offAll
 ├── index.ts                    # Public API exports
 ├── enums/
-│   ├── ECallState.enum.ts      # Call lifecycle states (INITIATED → ACTIVE → ENDED)
-│   ├── ECallEventName.enum.ts  # Call-level event names
-│   ├── EClientEventName.enum.ts# Client-level event names
-│   ├── ELocalStorageKey.enum.ts# localStorage key constants
-│   └── EMessageNotification.enum.ts # JSON-RPC method names
+│   ├── index.ts                # Barrel export
+│   ├── call-state.enum.ts      # Call lifecycle states (INITIATED → ACTIVE → ENDED)
+│   ├── call-event-name.enum.ts # Call-level event names
+│   ├── client-event-name.enum.ts # Client-level event names
+│   ├── storage-key.enum.ts     # localStorage key constants
+│   └── message-notification.enum.ts # JSON-RPC method names
 └── interfaces/
-    ├── ISession.ts             # Authenticated session shape
-    ├── ICallOptions.ts         # Call constructor options
-    ├── IActiveCall.ts          # Reconnect response shape
-    ├── IJwtPayload.ts          # Decoded JWT payload
-    └── IRPCMessageResult.ts    # JSON-RPC response/error shapes
+    ├── index.ts                # Barrel export
+    ├── session.interface.ts    # Authenticated session shape
+    ├── call-options.interface.ts # Call constructor options
+    ├── active-call.interface.ts # Reconnect response shape
+    ├── jwt-payload.interface.ts # Decoded JWT payload
+    └── rpc-message.interface.ts # JSON-RPC response/error shapes
 ```
 
 ## Architecture Principles
@@ -85,11 +87,13 @@ When adding new events:
 - **`readonly`** for immutable public properties (e.g., `activeCalls`, `sdkVersion`, `ready`)
 
 ### Naming
+- Files: `kebab-case` (e.g., `firetell-client.ts`, `call-state.enum.ts`, `session.interface.ts`)
 - Private methods: `_camelCase` prefix (e.g., `_initWebSocket`, `_handleCallState`)
 - Public methods: `camelCase` (e.g., `sendHold`, `makeCall`)
 - Enums: `E` prefix + PascalCase (e.g., `ECallState`, `EClientEventName`)
+- Enum keys: `UPPER_CASE` (e.g., `MEDIA_STATE`, `DEVICE_ID`)
 - Interfaces: `I` prefix + PascalCase (e.g., `ISession`, `IJwtPayload`)
-- Internal types within FiretellClient.ts: `I` prefix interfaces (e.g., `IRPCRequest`, `ICallStateParams`)
+- Internal types within firetell-client.ts: `I` prefix interfaces (e.g., `IRPCRequest`, `ICallStateParams`)
 
 ### Error Handling
 - Throw `new Error(message)` directly — no wrapping in `Promise.reject()`

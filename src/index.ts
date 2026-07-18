@@ -1,9 +1,9 @@
-import { FiretellClient } from "./FiretellClient";
-export { Call } from "./Call";
+import { FiretellClient } from "./firetell-client";
+export { Call } from "./call";
 export { FiretellClient };
-export { ECallState } from "./enums/ECallState.enum";
-export { ECallEventName } from "./enums/ECallEventName.enum";
-export { EClientEventName } from "./enums/EClientEventName.enum";
-export type { ISession } from "./interfaces/ISession";
-export type { CallOptions } from "./interfaces/ICallOptions";
-export type { IActiveCall } from "./interfaces/IActiveCall";
+export { ECallState } from "./enums/call-state.enum";
+export { ECallEventName } from "./enums/call-event-name.enum";
+export { EClientEventName } from "./enums/client-event-name.enum";
+export type { ISession } from "./interfaces/session.interface";
+export type { CallOptions } from "./interfaces/call-options.interface";
+export type { IActiveCall } from "./interfaces/active-call.interface";

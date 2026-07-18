@@ -1,17 +1,17 @@
-import { ECallEventName } from "./enums/ECallEventName.enum";
-import { ECallState } from "./enums/ECallState.enum";
-import { CallOptions } from "./interfaces/ICallOptions";
-import { SimpleEventEmitter } from "./SimpleEventEmitter";
-import { FiretellClient } from "./FiretellClient";
+import { ECallEventName } from "./enums/call-event-name.enum";
+import { ECallState } from "./enums/call-state.enum";
+import { CallOptions } from "./interfaces/call-options.interface";
+import { SimpleEventEmitter } from "./simple-event-emitter";
+import { FiretellClient } from "./firetell-client";
 
 export class Call extends SimpleEventEmitter {
-  public callId: string;
+  public callId: string | null = null ;
   public number: string;
   public calleeId: string;
   public caller: string;
   public active: boolean = false;
   private client: FiretellClient | null;
-  private state: ECallState;
+  private state: ECallState = ECallState.NONE;
   private peerConnection: RTCPeerConnection;
   public remoteDescription: RTCSessionDescriptionInit | null = null;
   private localStream: MediaStream | null = null;
@@ -55,21 +55,22 @@ export class Call extends SimpleEventEmitter {
       const callId = await this.client!.makeCall(this, sdp);
       this.callId = callId;
       this.active = true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.active = false;
       this.state = ECallState.ERROR;
       this.destroy();
-      throw new Error(error.message);
+      throw error instanceof Error ? error : new Error(String(error));
     }
   }
 
   /**
    * Hang up this call
    */
-  async hangup(): Promise<void> {
+  public async hangup(): Promise<void> {
     if (!this.active || !this.client) return;
     this.active = false;
     try {
+      if (!this.callId) return;
       await this.client.sendHangup(this.callId);
     } catch (error) {
       console.error("hangup::Error:", error);
@@ -82,10 +83,9 @@ export class Call extends SimpleEventEmitter {
    * Sets up WebRTC media, sets remote description, creates answer,
    * gathers full ICE, then sends call.answer via the client.
    */
-  async accept(): Promise<void> {
-    if (!this.remoteDescription) {
-      throw new Error("remoteDescription is missing");
-    }
+  public async accept(): Promise<void> {
+    if (!this.callId) throw new Error("callId is missing");
+    if (!this.remoteDescription) throw new Error("remoteDescription is missing");
     await this.setupWebrtcMedia({ video: this.isVideo, audio: true });
     await this.setRemoteDescription(this.remoteDescription);
     const answer = await this.peerConnection.createAnswer();
@@ -100,6 +100,7 @@ export class Call extends SimpleEventEmitter {
    * Reject an incoming call
    */
   public async reject(): Promise<void> {
+    if (!this.callId) return;
     await this.client?.sendReject(this.callId);
     this.destroy();
   }
@@ -110,6 +111,7 @@ export class Call extends SimpleEventEmitter {
    * @param callee Username of the target agent
    */
   public async transfer(callee: string): Promise<void> {
+    if (!this.callId) return;
     await this.onhold();
     await this.client?.sendTransfer(this.callId, callee);
     this.destroy();
@@ -124,6 +126,7 @@ export class Call extends SimpleEventEmitter {
     if (!this.active || !this.client) {
       throw new Error("Cannot send DTMF: call is not active");
     }
+    if (!this.callId) return;
     await this.client.sendDTMF(this.callId, digit, duration);
   }
 
@@ -135,6 +138,7 @@ export class Call extends SimpleEventEmitter {
     if (!this.active || !this.client) {
       throw new Error("Cannot mute: call is not active");
     }
+    if (!this.callId) return;
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach((track) => {
         track.enabled = false;
@@ -142,7 +146,7 @@ export class Call extends SimpleEventEmitter {
     }
     this.isMuted = true;
     await this.client.sendMute(this.callId, true);
-    this.emit(ECallEventName.mute, { muted: true });
+    this.emit(ECallEventName.MUTE, { muted: true });
   }
 
   /**
@@ -153,6 +157,7 @@ export class Call extends SimpleEventEmitter {
     if (!this.active || !this.client) {
       throw new Error("Cannot unmute: call is not active");
     }
+    if (!this.callId) return;
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach((track) => {
         track.enabled = true;
@@ -160,7 +165,7 @@ export class Call extends SimpleEventEmitter {
     }
     this.isMuted = false;
     await this.client.sendMute(this.callId, false);
-    this.emit(ECallEventName.mute, { muted: false });
+    this.emit(ECallEventName.MUTE, { muted: false });
   }
 
   /**
@@ -177,9 +182,9 @@ export class Call extends SimpleEventEmitter {
   /**
    * Update call signaling state from server notification
    */
-  public setSignalState(state: ECallState, params: any): void {
+  public setSignalState(state: ECallState, params: Record<string, unknown>): void {
     this.state = state === ECallState.ANSWERED ? ECallState.ACTIVE : state;
-    this.emit(ECallEventName.state, params);
+    this.emit(ECallEventName.STATE, params);
   }
 
   /**
@@ -193,13 +198,14 @@ export class Call extends SimpleEventEmitter {
    * Destroy/cleanup this call instance.
    * Uses _destroying flag to prevent infinite loop with hangup().
    */
-  async destroy(): Promise<void> {
+  public async destroy(): Promise<void> {
     if (this._destroying) return;
     this._destroying = true;
 
     if (this.active && this.client) {
       this.active = false;
       try {
+        if (!this.callId) return;
         await this.client.sendHangup(this.callId);
       } catch {
         // Best-effort hangup during destroy
@@ -242,7 +248,7 @@ export class Call extends SimpleEventEmitter {
 
       this.peerConnection.oniceconnectionstatechange = () => {
         this.emit(
-          ECallEventName.mediaState,
+          ECallEventName.MEDIA_STATE,
           this.peerConnection.iceConnectionState
         );
       };
@@ -253,18 +259,18 @@ export class Call extends SimpleEventEmitter {
       this.localStream.getTracks().forEach((track) =>
         this.peerConnection.addTrack(track, this.localStream!)
       );
-      this.emit(ECallEventName.localStream, this.localStream);
+      this.emit(ECallEventName.LOCAL_STREAM, this.localStream);
 
       // Process remote stream
       this.peerConnection.ontrack = (event) => {
         const remoteStream = event.streams[0];
         this.remoteStream = remoteStream;
-        this.emit(ECallEventName.remoteStream, remoteStream);
+        this.emit(ECallEventName.REMOTE_STREAM, remoteStream);
       };
 
       return true;
-    } catch (error: any) {
-      throw new Error(error.message);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error(String(error));
     }
   }
 
@@ -308,6 +314,7 @@ export class Call extends SimpleEventEmitter {
    * Put the call on hold
    */
   public async onhold(): Promise<void> {
+    if (!this.callId) return;
     this.peerConnection.getTransceivers().forEach((t) => {
       if (t.sender.track) {
         t.direction = "sendonly";
@@ -328,6 +335,7 @@ export class Call extends SimpleEventEmitter {
     if (this.state !== ECallState.ONHOLD) {
       throw new Error("Call is not on hold");
     }
+    if (!this.callId) return;
     this.peerConnection.getTransceivers().forEach((t) => {
       if (t.sender.track) {
         t.direction = "sendrecv";
@@ -364,11 +372,11 @@ export class Call extends SimpleEventEmitter {
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
-      this.emit(ECallEventName.localStream, null);
+      this.emit(ECallEventName.LOCAL_STREAM, null);
     }
     if (this.remoteStream) {
       this.remoteStream = null;
-      this.emit(ECallEventName.remoteStream, null);
+      this.emit(ECallEventName.REMOTE_STREAM, null);
     }
   }
 }
