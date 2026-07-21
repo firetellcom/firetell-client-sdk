@@ -617,19 +617,52 @@ export class FiretellClient {
             is_transfer: data.is_transfer || false,
           });
           break;
+        case "call.offered":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.TRYING,
+          });
+          break;
         case "call.answered":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ANSWERED,
+            sdp: data.sdp,
+          });
+          break;
         case "call.held":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ONHOLD,
+            sdp: data.sdp,
+          });
+          break;
         case "call.unheld":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ACTIVE,
+            sdp: data.sdp,
+          });
+          break;
         case "call.ended":
         case "call.rejected":
           this._handleCallState({
             call_id: data.call_id,
-            state: eventName === "call.answered" ? ECallState.ANSWERED : ECallState.ENDED,
-            sdp: data.sdp,
+            state: ECallState.ENDED,
             reason: data.reason,
           });
           break;
+        case "call.transferred":
+          // Transfer complete — clean up the transferring agent's call
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ENDED,
+            reason: "transferred",
+          });
+          break;
         case "call.candidate_ack":
+          break;
+        case "session.pong":
           break;
         case "session.error":
           console.error("WebSocket Session Error:", data.message);
