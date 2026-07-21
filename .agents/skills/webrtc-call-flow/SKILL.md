@@ -13,7 +13,7 @@ description: >
 
 ```
 Outbound:  INITIATED → REST POST /calls (returns call_token) → WS connect → call.offer → ANSWERED → ACTIVE → ENDED/ERROR
-Inbound:   SSE call.ring event → accept() → WS connect → call.answer → ANSWERED → ACTIVE → ENDED/ERROR
+Inbound:   SSE call.ring event → accept() → WS connect → call.offer (server) → call.answer → ANSWERED → ACTIVE → ENDED/ERROR
 Hold:      ACTIVE → ONHOLD → ACTIVE
 Cancel:    any → CANCEL
 ```
@@ -38,16 +38,15 @@ Cancel:    any → CANCEL
 ## Inbound Call Flow
 
 ```
-1. SSE Event: call.ring { call_id, caller, number, sdp }
-2. SDK creates Call instance, sets remoteDescription, emits "call.offer" event
-3. Consumer calls call.accept()
+1. SSE Event: call.ring { call_id, from, number, is_transfer } → Notification to UI
+2. Consumer calls call.accept()
+   ├─ Connects to per-call WebSocket with call_token
+   ├─ Receives Server WS event: call.offer { call_id, from, sdp }
    ├─ setupWebrtcMedia() → getUserMedia → addTracks
    ├─ setRemoteDescription(offer SDP)
    ├─ createAnswer() → setLocalDescription()
    ├─ getSDPFull() → wait for all ICE candidates
-   └─ client.sendAccept(callId, sdp)
-       ├─ Connects to per-call WebSocket with call_token
-       └─ Sends call.answer event
+   └─ Sends WS event: call.answer { call_id, sdp }
 ```
 
 ## Full ICE Gathering (getSDPFull)

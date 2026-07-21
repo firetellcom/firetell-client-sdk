@@ -307,6 +307,15 @@ export class FiretellClient {
     targetUsername: string,
     teamId: string = ""
   ): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.sendWsEvent("call.transfer", {
+        call_id: callId,
+        to: targetUsername,
+        team_id: teamId || undefined,
+      });
+      return;
+    }
+
     const url = `${this.baseUrl}${API_ENDPOINTS.TRANSFER(callId)}`;
     const response = await fetch(url, {
       method: "POST",
@@ -316,7 +325,7 @@ export class FiretellClient {
       },
       body: JSON.stringify({
         target_username: targetUsername,
-        team_id: teamId,
+        team_id: teamId || undefined,
       }),
     });
 

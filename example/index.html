@@ -758,7 +758,7 @@
         // Incoming call
         client.events.on("call.offer", (call) => {
           incomingCall = call;
-          const label = call.caller || call.number || "Unknown";
+          const label = call.from || call.caller || call.number || "Unknown";
           document.getElementById("incomingCaller").textContent = `📞 ${label}`;
           document.getElementById("incomingSub").textContent = call.isTransfer
             ? "Transferred call"
@@ -792,7 +792,7 @@
         });
 
         // Agent presence
-        client.events.on("workspace.agent.state", (params) => {
+        client.events.on("agent.state", (params) => {
           const { username, state } = params;
           if (state === "available") {
             agents.set(username, state);
@@ -862,7 +862,7 @@
         incomingCall = null;
 
         try {
-          bindCallEvents(call, call.caller || call.number || "Unknown");
+          bindCallEvents(call, call.from || call.caller || call.number || "Unknown");
           activeCall = call;
           disableDialer(true);
 
