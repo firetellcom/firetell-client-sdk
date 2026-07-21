@@ -325,8 +325,7 @@ export class Call extends SimpleEventEmitter {
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    const sdp = await this.client!.sendHold(this.callId, offer);
-    await this.setRemoteDescription(sdp);
+    await this.client!.sendHold(this.callId, offer);
     this.state = ECallState.ONHOLD;
   }
 
@@ -346,9 +345,8 @@ export class Call extends SimpleEventEmitter {
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    const sdp = await this.client!.sendUnHold(this.callId, offer);
-    await this.setRemoteDescription(sdp);
-    this.state = ECallState.ACTIVE;
+    await this.client!.sendUnHold(this.callId, offer);
+    this.state = ECallState.ANSWERED;
   }
 
   /**
