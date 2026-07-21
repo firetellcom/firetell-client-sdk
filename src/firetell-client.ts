@@ -26,10 +26,11 @@ interface ICallStateParams {
 /** Params for a call.offer (incoming call) notification */
 interface ICallOfferParams {
   call_id: string;
-  number: string;
+  from: string;
+  from_name?: string;
+  to: string;
   sdp: RTCSessionDescriptionInit;
   is_transfer?: boolean;
-  caller: string;
 }
 
 /** Response from REST Make Call API */
@@ -260,7 +261,7 @@ export class FiretellClient {
       },
       body: JSON.stringify({
         to: call.to,
-        number: call.number,
+        from: call.from,
         type: call.isVideo ? "video" : "audio",
       }),
     });
@@ -584,11 +585,11 @@ export class FiretellClient {
   }
 
   private _handleIncomingCall(params: ICallOfferParams): void {
-    const { call_id, number, sdp, is_transfer, caller } = params;
+    const { call_id, from, from_name, to, sdp, is_transfer } = params;
     const call = new Call(this, {
-      number,
-      from: caller,
-      to: this.getSessionInfo()?.username || "",
+      from,
+      from_name,
+      to: to || this.getSessionInfo()?.username || "",
       isVideo: this.isVideoCall(sdp),
       isTransfer: is_transfer || false,
     });
@@ -609,8 +610,9 @@ export class FiretellClient {
         case "call.offer":
           this._handleIncomingCall({
             call_id: data.call_id,
-            number: data.number || data.caller || "",
-            caller: data.caller || data.from || "",
+            from: data.from || data.caller_number || data.caller || "",
+            from_name: data.from_name || data.caller_name || "",
+            to: data.to || data.number || "",
             sdp: data.sdp,
             is_transfer: data.is_transfer || false,
           });

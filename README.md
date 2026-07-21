@@ -51,12 +51,14 @@ const session = await client.ready;
 console.log("Connected as:", session.username);
 ```
 
-### 2. Listen to Realtime Events (SSE)
+### 2. Listen to Realtime Events (SSE & WebSockets)
 
 ```typescript
-// Incoming call offer
+// Incoming call offer (call.offer)
 client.events.on("call.offer", (call) => {
-  console.log("Incoming call from:", call.from);
+  console.log("Incoming caller number (from):", call.from);        // "+84901234567"
+  console.log("Incoming caller display name (from_name):", call.from_name); // "Nguyen Van A (VIP)"
+  console.log("Called hotline / target number (to):", call.to);    // "+842471000000"
 });
 
 // Teammate presence state updates
@@ -74,8 +76,8 @@ client.events.on("error", (error) => {
 
 ```typescript
 const call = new Call(client, {
-  to: "+84901234567",     // Destination number or extension
-  number: "84281234567",    // Caller ID number
+  to: "+84901234567",     // Recipient phone number or extension
+  from: "+84281234567",   // Outbound caller ID phone number (optional)
   isVideo: false,
 });
 
