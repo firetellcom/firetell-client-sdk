@@ -7,7 +7,8 @@ import { FiretellClient } from "./firetell-client";
 export class Call extends SimpleEventEmitter {
   public callId: string | null = null ;
   public number: string;
-  public calleeId: string;
+  public to: string;
+  public from: string;
   public caller: string;
   public active: boolean = false;
   private client: FiretellClient | null;
@@ -26,11 +27,12 @@ export class Call extends SimpleEventEmitter {
     super();
     if (!(client instanceof FiretellClient))
       throw new Error("Missing or invalid client instance");
-    if (!options.calleeId) throw new Error("callee is required in options");
+    if (!options.to) throw new Error("destination (to) is required in options");
     this.client = client;
     this.number = options.number || "";
-    this.calleeId = options.calleeId;
-    this.caller = options.caller || "";
+    this.to = options.to;
+    this.from = options.from || options.caller || "";
+    this.caller = this.from;
     this.isVideo = options.isVideo || false;
     this.isTransfer = options.isTransfer || false;
     this.isInternal = options.isInternal || false;
@@ -106,14 +108,14 @@ export class Call extends SimpleEventEmitter {
   }
 
   /**
-   * Transfer the call to another agent.
-   * Puts the call on hold first, then sends transfer request.
-   * @param callee Username of the target agent
+   * Transfer the call to another agent in the team.
+   * Leaders and supervisors can transfer active calls.
+   * @param targetUsername Username of the target agent
+   * @param teamId Team ID
    */
-  public async transfer(callee: string): Promise<void> {
+  public async transfer(targetUsername: string, teamId: string = ""): Promise<void> {
     if (!this.callId) return;
-    await this.onhold();
-    await this.client?.sendTransfer(this.callId, callee);
+    await this.client?.sendTransfer(this.callId, targetUsername, teamId);
     this.destroy();
   }
 

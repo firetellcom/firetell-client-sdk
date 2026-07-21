@@ -56,7 +56,7 @@ console.log("Connected as:", session.username);
 ```typescript
 // Incoming call offer
 client.events.on("call.offer", (call) => {
-  console.log("Incoming call from:", call.caller);
+  console.log("Incoming call from:", call.from);
 });
 
 // Teammate presence state updates
@@ -74,7 +74,7 @@ client.events.on("error", (error) => {
 
 ```typescript
 const call = new Call(client, {
-  calleeId: "+84901234567", // Destination number or extension
+  to: "+84901234567",     // Destination number or extension
   number: "84281234567",    // Caller ID number
   isVideo: false,
 });

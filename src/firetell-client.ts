@@ -173,13 +173,32 @@ export class FiretellClient {
         withCredentials: true,
       });
 
-      this.eventSource.addEventListener("workspace.agent.state", (e: MessageEvent) => {
+      this.eventSource.addEventListener("agent.state", (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
           this.events.emit(EClientEventName.AGENT_STATE, data);
         } catch (err) {
-          console.error("Error parsing workspace.agent.state event:", err);
+          console.error("Error parsing agent.state event:", err);
         }
+      });
+
+      const forwardEvents = [
+        { name: "contact.created", enumName: EClientEventName.CONTACT_CREATED },
+        { name: "contact.updated", enumName: EClientEventName.CONTACT_UPDATED },
+        { name: "contact.deleted", enumName: EClientEventName.CONTACT_DELETED },
+        { name: "team.assigned", enumName: EClientEventName.TEAM_ASSIGNED },
+        { name: "team.unassigned", enumName: EClientEventName.TEAM_UNASSIGNED },
+      ];
+
+      forwardEvents.forEach(({ name, enumName }) => {
+        this.eventSource?.addEventListener(name, (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            this.events.emit(enumName, data);
+          } catch (err) {
+            console.error(`Error parsing ${name} event:`, err);
+          }
+        });
       });
 
       this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
@@ -228,7 +247,7 @@ export class FiretellClient {
         Authorization: `Bearer ${this.jwt}`,
       },
       body: JSON.stringify({
-        to: call.calleeId,
+        to: call.to,
         number: call.number,
         type: call.isVideo ? "video" : "audio",
       }),
@@ -277,6 +296,40 @@ export class FiretellClient {
     await this._connectCallWebSocket(defaultWsUrl, data.call_token, callId);
 
     return data;
+  }
+
+  /**
+   * Send Call Transfer request via REST API.
+   * Leaders and supervisors can transfer calls to another agent in the team.
+   */
+  public async sendTransfer(
+    callId: string,
+    targetUsername: string,
+    teamId: string = ""
+  ): Promise<void> {
+    const url = `${this.baseUrl}${API_ENDPOINTS.TRANSFER(callId)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+      body: JSON.stringify({
+        target_username: targetUsername,
+        team_id: teamId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || `HTTP ${response.status}: Failed to transfer call`);
+    }
+
+    this.activeCalls.delete(callId);
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
   }
 
   /**
@@ -513,8 +566,8 @@ export class FiretellClient {
     const { call_id, number, sdp, is_transfer, caller } = params;
     const call = new Call(this, {
       number,
-      caller,
-      calleeId: this.getSessionInfo()?.username || "",
+      from: caller,
+      to: this.getSessionInfo()?.username || "",
       isVideo: this.isVideoCall(sdp),
       isTransfer: is_transfer || false,
     });

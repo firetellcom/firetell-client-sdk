@@ -14,5 +14,5 @@ export enum EMessageNotification {
     "CALL_MUTE" = "call.mute",
     "CALL_RECONNECT" = "call.reconnect",
     "CALL_GET_OFFER" = "call.getOffer",
-    "AGENT_STATE" = "workspace.agent.state",
+    "AGENT_STATE" = "agent.state",
 }
