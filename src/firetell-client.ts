@@ -203,8 +203,20 @@ export class FiretellClient {
 
       this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data) as ICallOfferParams;
-          this._handleIncomingCall(data);
+          const data = JSON.parse(e.data) as {
+            call_id: string;
+            call_token: string;
+            ws_url?: string;
+          };
+          if (data.call_token) {
+            const wsUrl =
+              data.ws_url ||
+              this.wsServers[0] ||
+              `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
+            this._connectCallWebSocket(wsUrl, data.call_token, data.call_id).catch(
+              (err) => console.error("Error connecting call WebSocket from SSE ring:", err)
+            );
+          }
         } catch (err) {
           console.error("Error parsing call.ring event:", err);
         }
@@ -594,6 +606,15 @@ export class FiretellClient {
       const data = message.data || {};
 
       switch (eventName) {
+        case "call.offer":
+          this._handleIncomingCall({
+            call_id: data.call_id,
+            number: data.number || data.caller || "",
+            caller: data.caller || data.from || "",
+            sdp: data.sdp,
+            is_transfer: data.is_transfer || false,
+          });
+          break;
         case "call.answered":
         case "call.held":
         case "call.unheld":
