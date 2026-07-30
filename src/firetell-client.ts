@@ -165,6 +165,7 @@ export class FiretellClient {
         expires_at: (this.jwtPayload?.exp || 0) * 1000,
       };
       this.session = dummySession;
+      this.events.emit(EClientEventName.SESSION, dummySession);
       this._resolveReady(dummySession);
     } catch (error) {
       console.error(
@@ -186,9 +187,9 @@ export class FiretellClient {
     try {
       if (typeof window === "undefined" || !window.EventSource) return;
 
-      const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}`;
+      const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}?token=${encodeURIComponent(this.jwt)}`;
       this.eventSource = new EventSource(sseUrl, {
-        withCredentials: true,
+        withCredentials: false,
       });
 
       this.eventSource.addEventListener("agent.state", (e: MessageEvent) => {

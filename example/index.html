@@ -467,7 +467,7 @@
     <div class="app">
       <!-- ── Header ──────────────────────── -->
       <div class="header">
-        <h1>🔥 Firetell WebRTC</h1>
+        <h1>🔥 Firetell WebRTC Example</h1>
         <span class="badge" id="sdkVersion">SDK v—</span>
       </div>
 
@@ -718,6 +718,18 @@
 
           const session = await client.ready;
           log(`Authenticated as ${session.username}`, "success");
+
+          setConnectionStatus("online", "Connected");
+          document.getElementById("displayName").textContent =
+            session.display_name || session.username;
+          document.getElementById("sessionMeta").textContent =
+            `${session.username}@${session.domain}` +
+            (session.ext ? ` • ext ${session.ext}` : "");
+
+          show("sessionCard");
+          show("dialerCard");
+          show("agentsCard");
+          hide("loginCard");
         } catch (error) {
           log(`Init failed: ${error.message}`, "error");
         }
@@ -770,10 +782,12 @@
               ? ringData.to.name || ringData.to.number
               : ringData.to) || "";
 
-          document.getElementById("incomingCaller").textContent = `🔔 ${fromName}${fromNum}`;
-          document.getElementById("incomingSub").textContent = ringData.is_transfer
-            ? `Transferred call for ${toName}`
-            : `Incoming call for ${toName}`;
+          document.getElementById("incomingCaller").textContent =
+            `🔔 ${fromName}${fromNum}`;
+          document.getElementById("incomingSub").textContent =
+            ringData.is_transfer
+              ? `Transferred call for ${toName}`
+              : `Incoming call for ${toName}`;
           document.getElementById("incomingBanner").style.display = "block";
 
           log(
@@ -786,7 +800,12 @@
         // 2. Incoming WebRTC Offer Ready (call.offer) — Binds WebRTC call object
         client.events.on("call.offer", (call) => {
           incomingCall = call;
-          const label = call.from_name || call.from || call.caller || call.number || "Unknown";
+          const label =
+            call.from_name ||
+            call.from ||
+            call.caller ||
+            call.number ||
+            "Unknown";
           document.getElementById("incomingCaller").textContent = `📞 ${label}`;
           document.getElementById("incomingSub").textContent = call.isTransfer
             ? "Transferred call — WebRTC Ready"
@@ -889,7 +908,10 @@
         incomingCall = null;
 
         try {
-          bindCallEvents(call, call.from || call.caller || call.number || "Unknown");
+          bindCallEvents(
+            call,
+            call.from || call.caller || call.number || "Unknown",
+          );
           activeCall = call;
           disableDialer(true);
 
