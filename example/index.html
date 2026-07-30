@@ -877,8 +877,8 @@
 
         try {
           const call = new Firetell.Call(client, {
-            calleeId: callee,
-            number: callerId || undefined,
+            to: callee,
+            from: callerId || undefined,
             isVideo: video,
           });
 

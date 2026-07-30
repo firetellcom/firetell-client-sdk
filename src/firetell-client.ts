@@ -707,6 +707,11 @@ export class FiretellClient {
             code: 400,
             message: data.message,
           });
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ERROR,
+            reason: data.message,
+          });
           break;
         default:
           console.debug(`Received Event '${eventName}':`, data);
