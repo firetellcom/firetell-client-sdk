@@ -445,18 +445,30 @@ Response to the server's `session.ping` event.
 
 Events pushed from the server to connected clients.
 
-### `call.state`
+### `call.ended`
 
-Call state change notification.
+Call ended notification.
 
 ```json
 {
-  "notification": "call.state",
+  "notification": "call.ended",
   "params": {
     "call_id": "1711855200000",
-    "state": "ANSWERED",
-    "reason": "Answered",
-    "status": 200,
+    "reason": "NORMAL_CLEARING",
+    "status": 16
+  }
+}
+```
+
+### `call.answered`
+
+Call answered notification.
+
+```json
+{
+  "notification": "call.answered",
+  "params": {
+    "call_id": "1711855200000",
     "sdp": {
       "type": "answer",
       "sdp": "v=0\r\n..."
