@@ -681,6 +681,14 @@ export class FiretellClient {
             reason: data.reason,
           });
           break;
+        case "call.state":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: data.state as ECallState,
+            sdp: data.sdp,
+            reason: data.reason,
+          });
+          break;
         case "call.transferred":
           // Transfer complete — clean up the transferring agent's call
           this._handleCallState({
