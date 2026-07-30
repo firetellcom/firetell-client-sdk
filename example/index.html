@@ -755,19 +755,46 @@
           }
         });
 
-        // Incoming call
+        // 1. Instant Ring Alert via SSE (call.ring) — Shows Ringing UI Popup immediately
+        client.events.on("call.ring", (ringData) => {
+          const fromName =
+            (typeof ringData.from === "object" && ringData.from
+              ? ringData.from.name || ringData.from.number
+              : ringData.from) || "Unknown";
+          const fromNum =
+            typeof ringData.from === "object" && ringData.from?.number
+              ? ` (${ringData.from.number})`
+              : "";
+          const toName =
+            (typeof ringData.to === "object" && ringData.to
+              ? ringData.to.name || ringData.to.number
+              : ringData.to) || "";
+
+          document.getElementById("incomingCaller").textContent = `🔔 ${fromName}${fromNum}`;
+          document.getElementById("incomingSub").textContent = ringData.is_transfer
+            ? `Transferred call for ${toName}`
+            : `Incoming call for ${toName}`;
+          document.getElementById("incomingBanner").style.display = "block";
+
+          log(
+            `🔔 Instant Ring Alert from ${fromName}${fromNum}` +
+              (ringData.is_transfer ? " (transfer)" : ""),
+            "info",
+          );
+        });
+
+        // 2. Incoming WebRTC Offer Ready (call.offer) — Binds WebRTC call object
         client.events.on("call.offer", (call) => {
           incomingCall = call;
-          const label = call.from || call.caller || call.number || "Unknown";
+          const label = call.from_name || call.from || call.caller || call.number || "Unknown";
           document.getElementById("incomingCaller").textContent = `📞 ${label}`;
           document.getElementById("incomingSub").textContent = call.isTransfer
-            ? "Transferred call"
-            : "Incoming call";
+            ? "Transferred call — WebRTC Ready"
+            : "Incoming call — WebRTC Ready";
           document.getElementById("incomingBanner").style.display = "block";
           log(
-            `Incoming call from ${label}` +
-              (call.isTransfer ? " (transfer)" : ""),
-            "info",
+            `WebRTC offer ready for call ${call.callId} from ${label}`,
+            "success",
           );
 
           // Pre-bind state to handle CANCEL while ringing

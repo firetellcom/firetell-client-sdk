@@ -1,6 +1,7 @@
 export enum EClientEventName {
     SESSION = "session",
     ERROR = "error",
+    CALL_RING = "call.ring",
     CALL_OFFER = "call.offer",
     CALL_OFFERED = "call.offered",
     CALL_HELD = "call.held",

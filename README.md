@@ -54,16 +54,26 @@ console.log("Connected as:", session.username);
 ### 2. Listen to Realtime Events (SSE & WebSockets)
 
 ```typescript
-// Incoming call offer (call.offer)
+// 1. Incoming Call Ring Alert (call.ring — Instant SSE notification to trigger Ringing UI Popup)
+client.events.on("call.ring", (ringData) => {
+  console.log("Incoming call ring alert for call_id:", ringData.call_id);
+  console.log("Caller info (from):", ringData.from?.name, ringData.from?.number); // "Nguyen Van A", "+84901234567"
+  console.log("Hotline info (to):", ringData.to?.name, ringData.to?.number);       // "Support Team", "+842471000000"
+  // -> Trigger Incoming Call Ringing Screen / Ringtone Popup here!
+});
+
+// 2. WebRTC Call Offer Ready (call.offer — Incoming Call WebRTC object ready to answer)
 client.events.on("call.offer", (call) => {
-  console.log("Incoming caller number (from):", call.from);        // "+84901234567"
-  console.log("Incoming caller display name (from_name):", call.from_name); // "Nguyen Van A (VIP)"
-  console.log("Called hotline / target number (to):", call.to);    // "+842471000000"
+  console.log("Call object ready to answer:", call.callId);
+  console.log("Caller:", call.from_name || call.from);
+
+  // User presses Accept button:
+  // await call.answer();
 });
 
 // Teammate presence state updates
-client.events.on("workspace.agent.state", ({ username, state }) => {
-  console.log(`${username} is now ${state}`); // "available" | "offline"
+client.events.on("agent.state", ({ username, state }) => {
+  console.log(`${username} is now ${state}`); // "available" | "offline" | "busy"
 });
 
 // Errors

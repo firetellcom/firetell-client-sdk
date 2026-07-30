@@ -23,6 +23,23 @@ interface ICallStateParams {
   reason?: string;
 }
 
+/** Params for a call.ring notification */
+export interface ICallRingParams {
+  call_id: string;
+  call_token: string;
+  ws_url?: string;
+  from?: {
+    number: string;
+    name?: string;
+  };
+  to?: {
+    number: string;
+    name?: string;
+  };
+  is_transfer?: boolean;
+  timestamp?: string;
+}
+
 /** Params for a call.offer (incoming call) notification */
 interface ICallOfferParams {
   call_id: string;
@@ -204,11 +221,8 @@ export class FiretellClient {
 
       this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data) as {
-            call_id: string;
-            call_token: string;
-            ws_url?: string;
-          };
+          const data = JSON.parse(e.data) as ICallRingParams;
+          this.events.emit(EClientEventName.CALL_RING, data);
           if (data.call_token) {
             const wsUrl =
               data.ws_url ||
@@ -607,16 +621,30 @@ export class FiretellClient {
       const data = message.data || {};
 
       switch (eventName) {
-        case "call.offer":
+        case "call.offer": {
+          const fromVal =
+            typeof data.from === "object" && data.from
+              ? data.from.number
+              : data.from || data.caller_number || data.caller || "";
+          const fromNameVal =
+            typeof data.from === "object" && data.from
+              ? data.from.name || fromVal
+              : data.from_name || data.caller_name || "";
+          const toVal =
+            typeof data.to === "object" && data.to
+              ? data.to.number
+              : data.to || data.number || "";
+
           this._handleIncomingCall({
             call_id: data.call_id,
-            from: data.from || data.caller_number || data.caller || "",
-            from_name: data.from_name || data.caller_name || "",
-            to: data.to || data.number || "",
+            from: fromVal,
+            from_name: fromNameVal,
+            to: toVal,
             sdp: data.sdp,
             is_transfer: data.is_transfer || false,
           });
           break;
+        }
         case "call.offered":
           this._handleCallState({
             call_id: data.call_id,
