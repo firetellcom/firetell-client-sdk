@@ -214,6 +214,12 @@ export class Call extends SimpleEventEmitter {
     this.active = false;
     this.client = null;
     this.cleanupPeerConnection();
+    
+    if (this.state !== ECallState.ENDED && this.state !== ECallState.ERROR) {
+      this.state = ECallState.ENDED;
+      this.emit(ECallEventName.STATE, { state: ECallState.ENDED, reason: "Local Hangup" });
+    }
+    
     this.offAll();
   }
 
