@@ -681,10 +681,11 @@ export class FiretellClient {
             reason: data.reason,
           });
           break;
+        case "call.sdp":
         case "call.state":
           this._handleCallState({
             call_id: data.call_id,
-            state: data.state as ECallState,
+            state: (data.state as ECallState) || ECallState.RINGING,
             sdp: data.sdp,
             reason: data.reason,
           });
@@ -727,7 +728,11 @@ export class FiretellClient {
     if (!call) return;
 
     if (sdp) {
-      call.setRemoteDescription(sdp as RTCSessionDescription);
+      const sdpInit: RTCSessionDescriptionInit =
+        typeof sdp === "string"
+          ? { type: "answer", sdp }
+          : (sdp as RTCSessionDescriptionInit);
+      void call.setRemoteDescription(sdpInit);
     }
     call.setSignalState(state, params as unknown as Record<string, unknown>);
 
