@@ -23,13 +23,31 @@ interface ICallStateParams {
   reason?: string;
 }
 
+/** Params for a call.ring notification */
+export interface ICallRingParams {
+  call_id: string;
+  call_token: string;
+  ws_url?: string;
+  from?: {
+    number: string;
+    name?: string;
+  };
+  to?: {
+    number: string;
+    name?: string;
+  };
+  is_transfer?: boolean;
+  timestamp?: string;
+}
+
 /** Params for a call.offer (incoming call) notification */
 interface ICallOfferParams {
   call_id: string;
-  number: string;
+  from: string;
+  from_name?: string;
+  to: string;
   sdp: RTCSessionDescriptionInit;
   is_transfer?: boolean;
-  caller: string;
 }
 
 /** Response from REST Make Call API */
@@ -147,6 +165,7 @@ export class FiretellClient {
         expires_at: (this.jwtPayload?.exp || 0) * 1000,
       };
       this.session = dummySession;
+      this.events.emit(EClientEventName.SESSION, dummySession);
       this._resolveReady(dummySession);
     } catch (error) {
       console.error(
@@ -168,9 +187,9 @@ export class FiretellClient {
     try {
       if (typeof window === "undefined" || !window.EventSource) return;
 
-      const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}`;
+      const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}?token=${encodeURIComponent(this.jwt)}`;
       this.eventSource = new EventSource(sseUrl, {
-        withCredentials: true,
+        withCredentials: false,
       });
 
       this.eventSource.addEventListener("agent.state", (e: MessageEvent) => {
@@ -203,8 +222,17 @@ export class FiretellClient {
 
       this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data) as ICallOfferParams;
-          this._handleIncomingCall(data);
+          const data = JSON.parse(e.data) as ICallRingParams;
+          this.events.emit(EClientEventName.CALL_RING, data);
+          if (data.call_token) {
+            const wsUrl =
+              data.ws_url ||
+              this.wsServers[0] ||
+              `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
+            this._connectCallWebSocket(wsUrl, data.call_token, data.call_id).catch(
+              (err) => console.error("Error connecting call WebSocket from SSE ring:", err)
+            );
+          }
         } catch (err) {
           console.error("Error parsing call.ring event:", err);
         }
@@ -248,7 +276,7 @@ export class FiretellClient {
       },
       body: JSON.stringify({
         to: call.to,
-        number: call.number,
+        from: call.from,
         type: call.isVideo ? "video" : "audio",
       }),
     });
@@ -572,11 +600,11 @@ export class FiretellClient {
   }
 
   private _handleIncomingCall(params: ICallOfferParams): void {
-    const { call_id, number, sdp, is_transfer, caller } = params;
+    const { call_id, from, from_name, to, sdp, is_transfer } = params;
     const call = new Call(this, {
-      number,
-      from: caller,
-      to: this.getSessionInfo()?.username || "",
+      from,
+      from_name,
+      to: to || this.getSessionInfo()?.username || "",
       isVideo: this.isVideoCall(sdp),
       isTransfer: is_transfer || false,
     });
@@ -594,25 +622,96 @@ export class FiretellClient {
       const data = message.data || {};
 
       switch (eventName) {
+        case "call.offer": {
+          const fromVal =
+            typeof data.from === "object" && data.from
+              ? data.from.number
+              : data.from || data.caller_number || data.caller || "";
+          const fromNameVal =
+            typeof data.from === "object" && data.from
+              ? data.from.name || fromVal
+              : data.from_name || data.caller_name || "";
+          const toVal =
+            typeof data.to === "object" && data.to
+              ? data.to.number
+              : data.to || data.number || "";
+
+          this._handleIncomingCall({
+            call_id: data.call_id,
+            from: fromVal,
+            from_name: fromNameVal,
+            to: toVal,
+            sdp: data.sdp,
+            is_transfer: data.is_transfer || false,
+          });
+          break;
+        }
+        case "call.offered":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.TRYING,
+          });
+          break;
         case "call.answered":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ANSWERED,
+            sdp: data.sdp,
+          });
+          break;
         case "call.held":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ONHOLD,
+            sdp: data.sdp,
+          });
+          break;
         case "call.unheld":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ACTIVE,
+            sdp: data.sdp,
+          });
+          break;
         case "call.ended":
         case "call.rejected":
           this._handleCallState({
             call_id: data.call_id,
-            state: eventName === "call.answered" ? ECallState.ANSWERED : ECallState.ENDED,
+            state: ECallState.ENDED,
+            reason: data.reason,
+          });
+          break;
+        case "call.sdp":
+        case "call.state":
+          this._handleCallState({
+            call_id: data.call_id,
+            state: (data.state as ECallState) || ECallState.RINGING,
             sdp: data.sdp,
             reason: data.reason,
           });
           break;
+        case "call.transferred":
+          // Transfer complete — clean up the transferring agent's call
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ENDED,
+            reason: "transferred",
+          });
+          break;
         case "call.candidate_ack":
+          break;
+        case "session.pong":
           break;
         case "session.error":
           console.error("WebSocket Session Error:", data.message);
           this.events.emit(EClientEventName.ERROR, {
             code: 400,
             message: data.message,
+          });
+          this._handleCallState({
+            call_id: data.call_id,
+            state: ECallState.ERROR,
+            reason: data.message,
           });
           break;
         default:
@@ -629,7 +728,11 @@ export class FiretellClient {
     if (!call) return;
 
     if (sdp) {
-      call.setRemoteDescription(sdp as RTCSessionDescription);
+      const sdpInit: RTCSessionDescriptionInit =
+        typeof sdp === "string"
+          ? { type: "answer", sdp }
+          : (sdp as RTCSessionDescriptionInit);
+      void call.setRemoteDescription(sdpInit);
     }
     call.setSignalState(state, params as unknown as Record<string, unknown>);
 

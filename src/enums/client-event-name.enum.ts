@@ -1,7 +1,12 @@
 export enum EClientEventName {
     SESSION = "session",
     ERROR = "error",
+    CALL_RING = "call.ring",
     CALL_OFFER = "call.offer",
+    CALL_OFFERED = "call.offered",
+    CALL_HELD = "call.held",
+    CALL_UNHELD = "call.unheld",
+    CALL_TRANSFERRED = "call.transferred",
     CALL_MUTE = "call.mute",
     AGENT_STATE = "agent.state",
     RECONNECTED = "reconnected",

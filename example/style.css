@@ -1,0 +1,451 @@
+
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --surface-2: #242836;
+        --border: #2e3348;
+        --text: #e4e6f0;
+        --text-muted: #8b8fa3;
+        --primary: #6366f1;
+        --primary-hover: #818cf8;
+        --green: #22c55e;
+        --green-hover: #16a34a;
+        --red: #ef4444;
+        --red-hover: #dc2626;
+        --amber: #f59e0b;
+        --cyan: #06b6d4;
+        --radius: 12px;
+        --radius-sm: 8px;
+        --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          "Inter",
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .app {
+        width: 100%;
+        max-width: 440px;
+        padding: 20px;
+      }
+
+      /* ── Header ───────────────────────────── */
+      .header {
+        text-align: center;
+        margin-bottom: 24px;
+      }
+
+      .header h1 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.3px;
+      }
+
+      .header .badge {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--text-muted);
+        background: var(--surface);
+        padding: 3px 10px;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+      }
+
+      /* ── Cards ────────────────────────────── */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .card-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-muted);
+        margin-bottom: 14px;
+      }
+
+      /* ── Forms ────────────────────────────── */
+      .input-group {
+        display: flex;
+        gap: 8px;
+      }
+
+      input[type="text"] {
+        flex: 1;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        font-size: 13px;
+        font-family: "Inter", sans-serif;
+        color: var(--text);
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      input[type="text"]:focus {
+        border-color: var(--primary);
+      }
+
+      input[type="text"]::placeholder {
+        color: var(--text-muted);
+      }
+
+      /* ── Buttons ──────────────────────────── */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font-family: "Inter", sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 10px 18px;
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+      }
+
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--primary-hover);
+      }
+
+      .btn-green {
+        background: var(--green);
+        color: #fff;
+      }
+
+      .btn-green:hover:not(:disabled) {
+        background: var(--green-hover);
+      }
+
+      .btn-red {
+        background: var(--red);
+        color: #fff;
+      }
+
+      .btn-red:hover:not(:disabled) {
+        background: var(--red-hover);
+      }
+
+      .btn-ghost {
+        background: var(--surface-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+
+      .btn-ghost:hover:not(:disabled) {
+        background: var(--border);
+      }
+
+      .btn-ghost.active {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #fff;
+      }
+
+      .btn-sm {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      .btn-icon {
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border-radius: 50%;
+        font-size: 18px;
+      }
+
+      .btn-icon.btn-lg {
+        width: 56px;
+        height: 56px;
+        font-size: 22px;
+      }
+
+      /* ── Status Indicators ────────────────── */
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: var(--surface-2);
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--text-muted);
+        flex-shrink: 0;
+      }
+
+      .status-dot.online {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+      }
+
+      .status-dot.error {
+        background: var(--red);
+        box-shadow: 0 0 6px var(--red);
+      }
+
+      .status-dot.warning {
+        background: var(--amber);
+        box-shadow: 0 0 6px var(--amber);
+      }
+
+      /* ── Call UI ──────────────────────────── */
+      .call-info {
+        text-align: center;
+        padding: 16px 0;
+      }
+
+      .call-info .caller-name {
+        font-size: 22px;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+
+      .call-info .call-status {
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      .call-info .call-timer {
+        font-size: 28px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        margin-top: 8px;
+        color: var(--green);
+      }
+
+      .call-controls {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        margin-top: 20px;
+      }
+
+      .call-controls .btn-icon {
+        position: relative;
+      }
+
+      .call-controls .btn-label {
+        position: absolute;
+        bottom: -20px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 10px;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .call-actions {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        margin-top: 36px;
+      }
+
+      /* ── DTMF Pad ─────────────────────────── */
+      .dtmf-pad {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .dtmf-pad .btn {
+        font-size: 18px;
+        font-weight: 600;
+        padding: 14px;
+      }
+
+      /* ── Incoming Banner ──────────────────── */
+      .incoming-banner {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--surface);
+        border: 1px solid var(--primary);
+        border-radius: var(--radius);
+        padding: 16px 20px;
+        box-shadow: 0 8px 32px rgba(99, 102, 241, 0.25);
+        z-index: 100;
+        display: none;
+        min-width: 340px;
+        animation: slideDown 0.3s ease;
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) translateY(-20px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+      }
+
+      .incoming-banner .caller {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .incoming-banner .sub {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+      }
+
+      .incoming-banner .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .incoming-banner .actions .btn {
+        flex: 1;
+      }
+
+      /* ── Log Panel ────────────────────────── */
+      .log-panel {
+        background: var(--surface-2);
+        border-radius: var(--radius-sm);
+        padding: 12px;
+        max-height: 180px;
+        overflow-y: auto;
+        font-size: 11px;
+        font-family: "SF Mono", "Fira Code", monospace;
+        line-height: 1.6;
+        color: var(--text-muted);
+      }
+
+      .log-panel::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      .log-panel::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+
+      .log-entry .time {
+        color: var(--text-muted);
+        opacity: 0.6;
+      }
+
+      .log-entry.error {
+        color: var(--red);
+      }
+
+      .log-entry.success {
+        color: var(--green);
+      }
+
+      .log-entry.warn {
+        color: var(--amber);
+      }
+
+      .log-entry.info {
+        color: var(--cyan);
+      }
+
+      /* ── Agent List ───────────────────────── */
+      .agent-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .agent-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        background: var(--surface-2);
+        border-radius: 20px;
+        font-size: 12px;
+      }
+
+      /* ── Utilities ────────────────────────── */
+      .hidden {
+        display: none !important;
+      }
+
+      .flex-center {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .mt-12 {
+        margin-top: 12px;
+      }
+
+      .mt-8 {
+        margin-top: 8px;
+      }
+
+      .text-center {
+        text-align: center;
+      }
+
+      .text-muted {
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+
+      /* ── Media elements (hidden audio) ────── */
+      audio {
+        display: none;
+      }
+
+      /* ── Transfer input ───────────────────── */
+      .transfer-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+    

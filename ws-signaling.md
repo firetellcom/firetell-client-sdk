@@ -1,40 +1,22 @@
-# WebSocket Signaling — JSONRPC 2.0 API
+# Native WebSocket Signaling Protocol
 
 ## Connection
 
+Per-call scoped WebSocket connection:
 ```
-ws://<host>:<WS_PORT>
+wss://<workspace-domain>/call-session
 ```
 
-Protocol: **JSONRPC 2.0** via [rpc-websockets](https://github.com/elpheria/rpc-websockets)
+Protocol: **Native Event-Based WebSocket** (Zero external dependencies, no `rpc-websockets` or `socket.io`).
 
-### Request format
+### Request & Response Message Format
+
+All WebSocket messages follow a lightweight event JSON structure:
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "method": "<method_name>",
-  "params": { ... },
-  "id": 1
-}
-```
-
-### Response format
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": { "message": "OK", "data": { ... } },
-  "id": 1
-}
-```
-
-### Notification format (Server → Client)
-
-```json
-{
-  "notification": "<event_name>",
-  "params": { ... }
+  "event": "<event_name>",
+  "data": { ... }
 }
 ```
 
@@ -44,109 +26,92 @@ Protocol: **JSONRPC 2.0** via [rpc-websockets](https://github.com/elpheria/rpc-w
 
 ### `session.connect`
 
-Authenticate the WebSocket session with a JWT token. Must be called within **5 seconds** of connecting, otherwise the connection is terminated.
+Authenticate the WebSocket session using a short-lived `call_token` JWT. **MUST be sent within 3 seconds** of WebSocket connection, otherwise the server terminates the socket.
 
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "session.connect",
-  "params": {
-    "token": "eyJhbGciOiJIUzI1NiIs..."
+  "event": "session.connect",
+  "data": {
+    "token": "call_token_jwt..."
   }
 }
 ```
 
-**Response:**
+**Server Response (`session.connected`):**
 
 ```json
 {
-  "message": "Connected",
+  "event": "session.connected",
   "data": {
-    "session_id": "abc123",
-    "display_name": "John Doe",
-    "avatar": "https://...",
-    "domain": "example.com",
-    "username": "john",
-    "expires_at": 1711900800000
+    "session_id": "sess_123456",
+    "workspace_id": "ws_7890",
+    "username": "agent_john",
+    "call_id": "call_1711855200000",
+    "mode": "agent"
   }
 }
 ```
 
 ---
 
-## Call Methods
+## Call Protocol Events
 
 ### `call.offer`
 
-Initiate an outbound call. SDP must contain all ICE candidates (Full ICE, not Trickle).
+Send WebRTC SDP offer to initiate media negotiation. SDP must contain all gathered ICE candidates (Full ICE).
 
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "call.offer",
-  "params": {
-    "to": "0901234567",
-    "sdp": "v=0\r\no=- ...",
-    "number": "+84901234567"
+  "event": "call.offer",
+  "data": {
+    "call_id": "call_1711855200000",
+    "sdp": "v=0\r\no=- ..."
   }
 }
 ```
 
-| Param    | Type   | Required | Description                                               |
-| -------- | ------ | -------- | --------------------------------------------------------- |
-| `to`     | string | ✅       | Destination number or username                            |
-| `sdp`    | string | ✅       | Full SDP with ICE candidates                              |
-| `number` | string | ❌       | Caller ID / outbound number (required for external calls) |
-
-**Response:**
+**Server Response (`call.offered`):**
 
 ```json
 {
-  "message": "OK",
-  "data": { "call_id": "1711855200000" }
+  "event": "call.offered",
+  "data": {
+    "call_id": "call_1711855200000"
+  }
 }
 ```
-
-> **Note:** Internal calls (username or extension ≤ 4 digits) don't require `number`.
 
 ---
 
 ### `call.answer`
 
-Answer an incoming call.
+Answer an incoming call offer with SDP answer.
 
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "call.answer",
-  "params": {
-    "call_id": "1711855200000",
-    "sdp": {
-      "type": "answer",
-      "sdp": "v=0\r\no=- ..."
-    },
-    "is_internal": false,
-    "is_transfer": false
+  "event": "call.answer",
+  "data": {
+    "call_id": "call_1711855200000",
+    "sdp": "v=0\r\no=- ..."
   }
 }
 ```
 
-| Param         | Type                  | Required | Description                                  |
-| ------------- | --------------------- | -------- | -------------------------------------------- |
-| `call_id`     | string                | ✅       | Call ID from `call.offer` notification       |
-| `sdp`         | RTCSessionDescription | ✅       | Answer SDP                                   |
-| `is_internal` | boolean               | ❌       | Whether this is an internal call             |
-| `is_transfer` | boolean               | ❌       | Whether this is answering a transferred call |
-
-**Response:**
+**Server Response (`call.answered`):**
 
 ```json
 {
-  "message": "OK",
-  "data": { "call_id": "1711855200000" }
+  "event": "call.answered",
+  "data": {
+    "call_id": "call_1711855200000",
+    "sdp": "v=0\r\no=- ..."
+  }
 }
 ```
 
@@ -154,25 +119,16 @@ Answer an incoming call.
 
 ### `call.hangup`
 
-End an active call.
+End an active call session.
 
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "call.hangup",
-  "params": {
-    "call_id": "1711855200000"
+  "event": "call.hangup",
+  "data": {
+    "call_id": "call_1711855200000"
   }
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "OK",
-  "data": { "call_id": "1711855200000" }
 }
 ```
 
@@ -180,25 +136,16 @@ End an active call.
 
 ### `call.reject`
 
-Reject an incoming call. Other devices of the same user are notified.
+Reject an incoming call.
 
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "call.reject",
-  "params": {
-    "call_id": "1711855200000"
+  "event": "call.reject",
+  "data": {
+    "call_id": "call_1711855200000"
   }
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "OK",
-  "data": { "call_id": "1711855200000" }
 }
 ```
 
@@ -206,31 +153,16 @@ Reject an incoming call. Other devices of the same user are notified.
 
 ### `call.hold`
 
-Put a call on hold (sends re-INVITE with hold SDP).
+Put an active call on hold via SDP renegotiation.
 
-**Request:**
-
-```json
-{
-  "method": "call.hold",
-  "params": {
-    "call_id": "1711855200000",
-    "sdp": {
-      "type": "offer",
-      "sdp": "v=0\r\n..."
-    }
-  }
-}
-```
-
-**Response:**
+**Client Send:**
 
 ```json
 {
-  "message": "OK",
+  "event": "call.hold",
   "data": {
-    "type": "answer",
-    "sdp": "v=0\r\n..."
+    "call_id": "call_1711855200000",
+    "sdp": "v=0\r\no=- ..."
   }
 }
 ```
@@ -239,41 +171,17 @@ Put a call on hold (sends re-INVITE with hold SDP).
 
 ### `call.unhold`
 
-Resume a held call (sends re-INVITE with active SDP).
+Resume a held call via SDP renegotiation.
 
-**Request:** Same format as `call.hold`.
-
-**Response:** Same format as `call.hold`.
-
----
-
-### `call.transfer`
-
-Transfer the call to another agent.
-
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "call.transfer",
-  "params": {
-    "call_id": "1711855200000",
-    "callee": "agent_b"
+  "event": "call.unhold",
+  "data": {
+    "call_id": "call_1711855200000",
+    "sdp": "v=0\r\no=- ..."
   }
-}
-```
-
-| Param     | Type   | Required | Description                  |
-| --------- | ------ | -------- | ---------------------------- |
-| `call_id` | string | ✅       | Active call ID               |
-| `callee`  | string | ✅       | Username of the target agent |
-
-**Response:**
-
-```json
-{
-  "message": "OK",
-  "data": { "call_id": "1711855200000" }
 }
 ```
 
@@ -281,33 +189,18 @@ Transfer the call to another agent.
 
 ### `call.dtmf`
 
-Send a DTMF tone via SIP INFO to Firetell's server.
+Send a DTMF tone via SIP INFO to the server.
 
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "call.dtmf",
-  "params": {
-    "call_id": "1711855200000",
+  "event": "call.dtmf",
+  "data": {
+    "call_id": "call_1711855200000",
     "digit": "5",
     "duration": 250
   }
-}
-```
-
-| Param      | Type   | Required | Description                          |
-| ---------- | ------ | -------- | ------------------------------------ |
-| `call_id`  | string | ✅       | Active call ID                       |
-| `digit`    | string | ✅       | Single digit: `0-9`, `*`, `#`, `A-D` |
-| `duration` | number | ❌       | Duration in ms (default: 250)        |
-
-**Response:**
-
-```json
-{
-  "message": "OK",
-  "data": { "call_id": "1711855200000", "digit": "5" }
 }
 ```
 
@@ -315,91 +208,16 @@ Send a DTMF tone via SIP INFO to Firetell's server.
 
 ### `call.mute`
 
-Notify the server that the client has muted/unmuted their microphone. **The server broadcasts this state to other participants.** Actual audio muting is handled client-side by stopping the audio track.
+Notify server of client-side microphone mute state change.
 
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "call.mute",
-  "params": {
-    "call_id": "1711855200000",
+  "event": "call.mute",
+  "data": {
+    "call_id": "call_1711855200000",
     "muted": true
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "OK",
-  "data": { "call_id": "1711855200000", "muted": true }
-}
-```
-
----
-
-### `call.reconnect`
-
-Retrieve active calls after a WebSocket reconnection. The server automatically swaps the old socketId with the new one during the `connect` call (within the 15s grace period), so this method simply returns the current state.
-
-**Request:**
-
-```json
-{
-  "method": "call.reconnect",
-  "params": {}
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "OK",
-  "data": {
-    "active_calls": [
-      {
-        "call_id": "1711855200000",
-        "sdp": {
-          "type": "answer",
-          "sdp": "v=0\r\n..."
-        },
-        "media_type": "media"
-      }
-    ]
-  }
-}
-```
-
-> **Note:** If `active_calls` is empty, the user has no active calls.
-
----
-
-### `call.getOffer`
-
-Get the remote SDP for a call.
-
-**Request:**
-
-```json
-{
-  "method": "call.getOffer",
-  "params": {
-    "call_id": "1711855200000"
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "OK",
-  "data": {
-    "sdp": "v=0\r\n...",
-    "fromUri": "sip:user@domain"
   }
 }
 ```
@@ -408,160 +226,66 @@ Get the remote SDP for a call.
 
 ### `call.candidate`
 
-> ⚠️ **Not functional.** Firetell does not support Trickle ICE. Clients must gather all ICE candidates before sending `call.offer`.
+Send an ICE candidate to the server.
 
----
-
-## Heartbeat
-
-### `session.pong` (Client → Server)
-
-Response to the server's `session.ping` event.
-
-**Request:**
+**Client Send:**
 
 ```json
 {
-  "method": "session.pong",
-  "params": {
-    "timestamp": 1711855200000
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "You're still alive",
-  "timestamp": 1711855200000,
-  "sessions": 1
-}
-```
-
----
-
-## Server Notifications
-
-Events pushed from the server to connected clients.
-
-### `call.state`
-
-Call state change notification.
-
-```json
-{
-  "notification": "call.state",
-  "params": {
-    "call_id": "1711855200000",
-    "state": "ANSWERED",
-    "reason": "Answered",
-    "status": 200,
-    "sdp": {
-      "type": "answer",
-      "sdp": "v=0\r\n..."
+  "event": "call.candidate",
+  "data": {
+    "call_id": "call_1711855200000",
+    "candidate": {
+      "candidate": "candidate:1 1 UDP...",
+      "sdpMid": "0",
+      "sdpMLineIndex": 0
     }
   }
 }
 ```
 
-**Possible states:**
-
-| State      | Status | Description                                              |
-| ---------- | ------ | -------------------------------------------------------- |
-| `TRYING`   | 100    | INVITE sent                                              |
-| `RINGING`  | 180    | Remote is ringing                                        |
-| `ANSWERED` | 200    | Call connected                                           |
-| `ENDED`    | varies | Call terminated (BYE, timeout, error)                    |
-| `CANCEL`   | varies | Call cancelled (by caller or answered on another device) |
-| `ERROR`    | varies | Call error                                               |
-
 ---
 
-### `call.offer`
+## Server Events & Notifications
 
-Incoming call notification.
+### `call.state`
+
+Call lifecycle state transition pushed by the server.
 
 ```json
 {
-  "notification": "call.offer",
-  "params": {
-    "call_id": "1711855200000",
-    "caller": "0901234567",
-    "number": "+84901234567",
-    "sdp": {
-      "type": "offer",
-      "sdp": "v=0\r\n..."
-    },
-    "is_transfer": false
+  "event": "call.state",
+  "data": {
+    "call_id": "call_1711855200000",
+    "state": "ANSWERED",
+    "sdp": "v=0\r\no=- ..."
+  }
+}
+```
+
+**Call states:** `INITIATED`, `TRYING`, `RINGING`, `ANSWERED`, `ENDED`, `CANCEL`, `ERROR`.
+
+---
+
+### `error`
+
+Error event pushed by the server.
+
+```json
+{
+  "event": "error",
+  "data": {
+    "code": 401,
+    "message": "Invalid or expired call token"
   }
 }
 ```
 
 ---
 
-### `call.mute`
+## Workspace Background Events (SSE Stream)
 
-Mute state changed by another participant.
+Workspace-wide real-time events (agent status, incoming call ring popups) are consumed over **Server-Sent Events (SSE)** at `GET /api/v1/call-center/events/stream`:
 
-```json
-{
-  "notification": "call.mute",
-  "params": {
-    "call_id": "1711855200000",
-    "username": "admin",
-    "muted": true
-  }
-}
-```
-
----
-
-### `workspace.agent.state`
-
-Agent online/offline status change.
-
-```json
-{
-  "notification": "workspace.agent.state",
-  "params": {
-    "username": "admin",
-    "state": "available"
-  }
-}
-```
-
-**Possible states:** `available`, `offline`
-
----
-
-### `session.ping`
-
-Heartbeat sent every 60 seconds.
-
-```json
-{
-  "notification": "session.ping",
-  "params": {
-    "timestamp": 1711855200000
-  }
-}
-```
-
----
-
-## Reconnection Flow
-
-When a WebSocket connection drops during an active call:
-
-```
-1. Client detects WS disconnect
-2. Server starts 15s grace period (SIP call continues)
-3. Client reconnects WS
-4. Client calls connect({ token }) → authenticated
-5. Server auto-swaps old socketId → new socketId in active calls
-6. Client calls call.reconnect({}) → gets active calls list
-7. Client restores call UI
-```
-
-> If the client does NOT reconnect within 15 seconds, the server performs full cleanup (removes client, emits offline status). The SIP dialog remains active until Firetell's server terminates it.
+- `call.ring`: Incoming call notification payload `{ call_id, from, to }`
+- `agent.state`: Teammate status payload `{ username, state }`

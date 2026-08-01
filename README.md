@@ -1,40 +1,53 @@
-# Firetell Client SDK
+# @firetell/firetell-client-sdk
 
-TypeScript/JavaScript SDK for Firetell WebRTC — make and receive audio/video calls via REST API initiation, Native WebSockets per call, and Server-Sent Events (SSE).
+[![npm version](https://img.shields.io/npm/v/@firetell/firetell-client-sdk.svg)](https://www.npmjs.com/package/@firetell/firetell-client-sdk)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Features
+Official TypeScript/JavaScript SDK for building WebRTC Voice & Video Communications applications on the Firetell Platform (CPaaS, Virtual PBX, Call Center, Voice AI, SIP Trunking).
 
-- 📞 **Audio/Video Calls** — Outbound and inbound WebRTC calls via REST API & Native WebSocket per call
-- 🌐 **Native WebSocket & SSE** — Lightweight, zero external dependencies (`socket.io`/`rpc-websockets` free)
-- 🔒 **Unified Call Token** — Short-lived `call_token` JWT authentication per call session
-- 🎧 **Call Supervision** — Support for `listen`, `whisper`, and `barge` supervision modes
-- 📥 **Incoming Call Handling** — Accept, reject, or auto-handle incoming calls
-- ⏸️ **Hold / Unhold** — Re-INVITE based hold with SDP renegotiation
-- 🔇 **Mute / Unmute** — Client-side audio track control + server notification
-- 🎹 **DTMF** — Send DTMF tones via SIP INFO
-- 👥 **Agent Presence** — Real-time agent status changes via SSE stream (`GET /call-center/events/stream`)
-- 📦 **TypeScript** — Full type definitions with typed event emitter
+---
 
-## Installation
+## 🌟 Key Features
+
+- 📞 **WebRTC Outbound & Inbound Calls** — High-quality audio/video calls using Native WebSockets per call session.
+- 🎵 **Early Media & PSTN Ringback Audio (`call.sdp` / 183 Session Progress)** — Full support for early audio playback so callers hear PSTN ringback tones or early IVR prompts before the callee answers.
+- 🌐 **Native WebSockets & SSE** — Lightweight, zero external dependencies (no Socket.IO or heavy WS wrappers).
+- 🔒 **Per-Call Security Tokens** — Short-lived `call_token` JWT authentication per WebRTC session.
+- 🎧 **Call Center Supervision** — Built-in `listen` (silent monitor), `whisper` (coach agent), and `barge` (3-way call) supervision modes.
+- 📥 **Instant Incoming Call Alerts** — Real-time ring notifications via SSE (`call.ring`) and WebRTC offer payloads (`call.offer`).
+- ⏸️ **In-Call Control** — Re-INVITE based Hold/Unhold, client-side Mute/Unmute, and DTMF tones (SIP INFO).
+- 👥 **Real-time Agent Presence** — Track team availability via Server-Sent Events (`agent.state`).
+- 📦 **Multi-Format Distribution** — Distributed as ESM (`.mjs`), CommonJS (`.js`), and Browser Bundle (`.global.js`).
+
+---
+
+## 📦 Installation
 
 ```bash
 npm install @firetell/firetell-client-sdk
+# or
+yarn add @firetell/firetell-client-sdk
+# or
+pnpm add @firetell/firetell-client-sdk
 ```
 
-Or use via CDN (IIFE bundle):
+### Browser CDN Usage
 
 ```html
-<script src="dist/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@firetell/firetell-client-sdk/dist/index.global.js"></script>
 <script>
-  const token = "your-agent-jwt-token";
-  const domain = "your-workspace-domain";
+  const token = "YOUR_AGENT_JWT_TOKEN";
+  const domain = "your-workspace.firetell.app";
   const client = new Firetell.FiretellClient(token, domain);
 </script>
 ```
 
-## Quick Start
+---
 
-### 1. Initialize Client
+## 🚀 Quick Start Guide
+
+### 1. Initialize the Client
 
 ```typescript
 import {
@@ -42,56 +55,209 @@ import {
   Call,
   ECallState,
   EClientEventName,
+  ECallEventName,
 } from "@firetell/firetell-client-sdk";
 
-const client = new FiretellClient("your-jwt-token", "https://your-workspace.firetell.app");
+// Initialize client with agent JWT and workspace domain/URL
+const client = new FiretellClient(
+  "YOUR_AGENT_JWT_TOKEN",
+  "https://your-workspace.firetell.app"
+);
 
-// Wait for the client to be fully initialized
+// Wait for connection initialization
 const session = await client.ready;
-console.log("Connected as:", session.username);
+console.log(`Connected as Agent: ${session.username} (${session.workspace_id})`);
 ```
 
-### 2. Listen to Realtime Events (SSE)
+---
+
+### 2. Make an Outbound Call (with Early Media Support)
 
 ```typescript
-// Incoming call offer
-client.events.on("call.offer", (call) => {
-  console.log("Incoming call from:", call.from);
-});
+// HTML audio elements for WebRTC streams
+const remoteAudio = document.getElementById("remote-audio") as HTMLAudioElement;
 
-// Teammate presence state updates
-client.events.on("workspace.agent.state", ({ username, state }) => {
-  console.log(`${username} is now ${state}`); // "available" | "offline"
-});
-
-// Errors
-client.events.on("error", (error) => {
-  console.error(`Error [${error.code}]:`, error.message);
-});
-```
-
-### 3. Make an Outbound Call
-
-```typescript
+// Create Call instance
 const call = new Call(client, {
-  to: "+84901234567",     // Destination number or extension
-  number: "84281234567",    // Caller ID number
+  to: "+84901234567",     // Extension, agent username, or phone number
+  from: "+842871000000",   // Optional outbound Caller ID
   isVideo: false,
 });
 
-// Listen to call events
-call.on("state", (params) => {
-  console.log("Call State:", params.state); // INITIATED → ANSWERED → ENDED
+// 1. Listen for remote audio stream (Works for Early Media & Answered states!)
+call.on(ECallEventName.REMOTE_STREAM, (remoteStream) => {
+  console.log("Received Remote Stream (Early Media / Audio Answer):", remoteStream);
+  remoteAudio.srcObject = remoteStream;
+  remoteAudio.play().catch(console.error);
 });
 
-// Start call (HTTP REST POST /calls → returns call_token → opens per-call WebSocket)
+// 2. Listen to call state changes
+call.on(ECallEventName.STATE, (payload) => {
+  console.log("Call State Changed:", payload.state, payload.reason);
+  // States: INITIATED -> TRYING -> RINGING -> ACTIVE (ANSWERED) -> ENDED
+  switch (payload.state) {
+    case ECallState.RINGING:
+      console.log("Ringing / Early Media established...");
+      break;
+    case ECallState.ACTIVE:
+      console.log("Call Connected & Active!");
+      break;
+    case ECallState.ENDED:
+      console.log("Call Ended.");
+      break;
+  }
+});
+
+// 3. Initiate the call
 await call.start();
 ```
 
-### 4. Call Supervision (Supervisor Only)
+---
+
+### 3. Handle Incoming Calls
 
 ```typescript
-// Listen (silent monitor), whisper (coach agent), or barge (3-way call)
-const supervision = await client.superviseCall("cl_123456", "listen");
-console.log("Supervision active with call_token:", supervision.call_token);
+// 1. Instant Ring Alert (Trigger Ringing Popup & Play Ringtone)
+client.events.on("call.ring", (ringData) => {
+  console.log("🔔 Incoming Call Alert!", ringData.call_id);
+  console.log("Caller:", ringData.from?.name || ringData.from?.number);
+  console.log("Hotline:", ringData.to?.name || ringData.to?.number);
+  // Show incoming call modal UI & play ringtone...
+});
+
+// 2. Incoming Call WebRTC Offer Ready
+client.events.on("call.offer", (incomingCall) => {
+  console.log("Call Object Ready:", incomingCall.callId);
+
+  // Bind Remote Stream
+  incomingCall.on(ECallEventName.REMOTE_STREAM, (stream) => {
+    remoteAudio.srcObject = stream;
+    remoteAudio.play();
+  });
+
+  // Example: Accept button click handler
+  document.getElementById("btn-accept")?.addEventListener("click", async () => {
+    await incomingCall.answer();
+    console.log("Call Answered!");
+  });
+
+  // Example: Reject button click handler
+  document.getElementById("btn-reject")?.addEventListener("click", async () => {
+    await incomingCall.hangup();
+  });
+});
 ```
+
+---
+
+## 🎛️ In-Call Operations
+
+Once a call is active (`call` object), you can perform the following controls:
+
+### Mute & Unmute Audio
+
+```typescript
+// Mute microphone (stops sending audio)
+call.mute();
+console.log("Microphone Muted:", call.isMuted);
+
+// Unmute microphone
+call.unmute();
+console.log("Microphone Muted:", call.isMuted);
+
+// Toggle mute state
+const isMutedNow = call.toggleMute();
+```
+
+### Hold & Unhold Call
+
+```typescript
+// Hold call (sends SDP renegotiation to server)
+await call.hold();
+
+// Unhold call
+await call.unhold();
+```
+
+### Send DTMF Tones
+
+```typescript
+// Send DTMF keypad digit ('0'-'9', '*', '#') via SIP INFO
+await call.sendDTMF("1");
+```
+
+### End Call
+
+```typescript
+// Hangup / Terminate Call
+await call.hangup();
+```
+
+---
+
+## 🎧 Call Supervision (Supervisor / Monitor)
+
+Supervisors can monitor ongoing agent calls in 3 modes:
+
+```typescript
+// Mode 1: "listen" — Silent Monitoring (Supervisor hears both agent & customer)
+const call = await client.superviseCall("cl_123456789", "listen");
+
+// Mode 2: "whisper" — Whisper / Coach (Only the agent hears the supervisor)
+const call = await client.superviseCall("cl_123456789", "whisper");
+
+// Mode 3: "barge" — 3-Way Barge-In (Both agent & customer hear supervisor)
+const call = await client.superviseCall("cl_123456789", "barge");
+
+// Bind stream and start listening
+call.on(ECallEventName.REMOTE_STREAM, (stream) => {
+  remoteAudio.srcObject = stream;
+  remoteAudio.play();
+});
+
+await call.start();
+```
+
+---
+
+## 👥 Real-Time Agent Presence & Events
+
+Track team presence and status changes in real-time via Server-Sent Events (SSE):
+
+```typescript
+// Listen for agent status changes
+client.events.on("agent.state", ({ username, state, team_id }) => {
+  console.log(`Agent ${username} is now ${state}`); // "available" | "busy" | "offline"
+});
+
+// Change current agent presence status
+await client.setPresence("available"); // "available" | "busy" | "offline"
+```
+
+---
+
+## 📖 API & Event Reference
+
+### `EClientEventName` (Client Events)
+
+| Event Name | Payload Type | Description |
+| :--- | :--- | :--- |
+| `call.ring` | `ICallRingEventPayload` | Triggered instantly when an incoming call starts ringing |
+| `call.offer` | `Call` | Triggered when the WebRTC call object is ready to answer |
+| `agent.state` | `{ username, state, team_id }` | Real-time presence updates of team agents |
+| `error` | `{ code, message }` | General client errors or authentication failures |
+
+### `ECallEventName` (Call Instance Events)
+
+| Event Name | Payload Type | Description |
+| :--- | :--- | :--- |
+| `state` | `ISIPCallState` | Call state changes (`INITIATED`, `TRYING`, `RINGING`, `ACTIVE`, `ONHOLD`, `ENDED`) |
+| `remoteStream` | `MediaStream` | Fired when remote audio/video stream is available (including Early Media / Ringback) |
+| `localStream` | `MediaStream` | Fired when local microphone/camera stream is captured |
+| `mediaState` | `RTCIceConnectionState` | WebRTC ICE connection status updates (`connecting`, `connected`, `failed`) |
+
+---
+
+## 📄 License
+
+This SDK is released under the **MIT License**.

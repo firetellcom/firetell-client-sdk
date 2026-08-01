@@ -6,10 +6,9 @@ import { FiretellClient } from "./firetell-client";
 
 export class Call extends SimpleEventEmitter {
   public callId: string | null = null ;
-  public number: string;
-  public to: string;
   public from: string;
-  public caller: string;
+  public from_name: string;
+  public to: string;
   public active: boolean = false;
   private client: FiretellClient | null;
   private state: ECallState = ECallState.NONE;
@@ -29,10 +28,9 @@ export class Call extends SimpleEventEmitter {
       throw new Error("Missing or invalid client instance");
     if (!options.to) throw new Error("destination (to) is required in options");
     this.client = client;
-    this.number = options.number || "";
     this.to = options.to;
-    this.from = options.from || options.caller || "";
-    this.caller = this.from;
+    this.from = options.from || "";
+    this.from_name = options.from_name || "";
     this.isVideo = options.isVideo || false;
     this.isTransfer = options.isTransfer || false;
     this.isInternal = options.isInternal || false;
@@ -216,6 +214,12 @@ export class Call extends SimpleEventEmitter {
     this.active = false;
     this.client = null;
     this.cleanupPeerConnection();
+    
+    if (this.state !== ECallState.ENDED && this.state !== ECallState.ERROR) {
+      this.state = ECallState.ENDED;
+      this.emit(ECallEventName.STATE, { state: ECallState.ENDED, reason: "Local Hangup" });
+    }
+    
     this.offAll();
   }
 
