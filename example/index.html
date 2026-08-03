@@ -263,7 +263,7 @@
           document.getElementById("sdkVersion").textContent =
             `SDK v${client.sdkVersion}`;
 
-          log("Initializing client…", "info");
+          log(`Initializing client (Device ID: ${client.getDeviceId()})…`, "info");
           setupClientEvents();
 
           const session = await client.ready;
@@ -391,16 +391,40 @@
           );
         });
 
-        // Agent presence
+        // Agent presence & lifecycle events
         client.events.on("agent.state", (params) => {
-          const { username, state } = params;
+          const payload = params.data || params;
+          const { id, username, state, reason } = payload;
+          const agentKey = username || id;
           if (state === "available") {
-            agents.set(username, state);
+            agents.set(agentKey, state);
           } else {
-            agents.delete(username);
+            agents.delete(agentKey);
           }
           renderAgents();
-          log(`Agent ${username} → ${state}`, "info");
+          log(`Agent ${agentKey} state → ${state}${reason ? ` (${reason})` : ""}`, "info");
+        });
+
+        client.events.on("agent.state.forced", (params) => {
+          const payload = params.data || params;
+          log(`Agent ${payload.target_username || payload.id} state forced → ${payload.new_state} by ${payload.forced_by}`, "warn");
+        });
+
+        client.events.on("agent.created", (params) => {
+          const payload = params.data || params;
+          log(`Agent created: ${payload.display_name || payload.username} (${payload.id})`, "info");
+        });
+
+        client.events.on("agent.updated", (params) => {
+          const payload = params.data || params;
+          log(`Agent updated: ${payload.display_name || payload.username} (${payload.id})`, "info");
+        });
+
+        client.events.on("agent.deleted", (params) => {
+          const payload = params.data || params;
+          agents.delete(payload.username || payload.id);
+          renderAgents();
+          log(`Agent deleted: ${payload.username || payload.id}`, "warn");
         });
 
         // Reconnected
@@ -446,8 +470,7 @@
           log(`Call started — ID: ${call.callId}`, "success");
         } catch (error) {
           log(`Call failed: ${error.message}`, "error");
-          activeCall = null;
-          disableDialer(false);
+          endCallUI("ERROR", error.message);
         }
       }
 
@@ -473,8 +496,7 @@
           log("Call accepted", "success");
         } catch (error) {
           log(`Accept failed: ${error.message}`, "error");
-          activeCall = null;
-          disableDialer(false);
+          endCallUI("ERROR", error.message);
         }
       }
 
