@@ -17,6 +17,9 @@ export enum EClientEventName {
     CONTACT_CREATED = "contact.created",
     CONTACT_UPDATED = "contact.updated",
     CONTACT_DELETED = "contact.deleted",
+    TEAM_CREATED = "team.created",
+    TEAM_UPDATED = "team.updated",
+    TEAM_DELETED = "team.deleted",
     TEAM_ASSIGNED = "team.assigned",
     TEAM_UNASSIGNED = "team.unassigned",
 }

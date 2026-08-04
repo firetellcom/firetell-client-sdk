@@ -187,6 +187,9 @@ export class FiretellClient {
         { name: "contact.created", enumName: EClientEventName.CONTACT_CREATED },
         { name: "contact.updated", enumName: EClientEventName.CONTACT_UPDATED },
         { name: "contact.deleted", enumName: EClientEventName.CONTACT_DELETED },
+        { name: "team.created", enumName: EClientEventName.TEAM_CREATED },
+        { name: "team.updated", enumName: EClientEventName.TEAM_UPDATED },
+        { name: "team.deleted", enumName: EClientEventName.TEAM_DELETED },
         { name: "team.assigned", enumName: EClientEventName.TEAM_ASSIGNED },
         { name: "team.unassigned", enumName: EClientEventName.TEAM_UNASSIGNED },
       ];
@@ -194,17 +197,33 @@ export class FiretellClient {
       forwardEvents.forEach(({ name, enumName }) => {
         this.eventSource?.addEventListener(name, (e: MessageEvent) => {
           try {
-            const data = JSON.parse(e.data);
+            const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
             this.events.emit(enumName, data);
+            if (name !== enumName) {
+              this.events.emit(name, data);
+            }
           } catch (err) {
             console.error(`Error parsing ${name} event:`, err);
           }
         });
       });
 
+      // General fallback onmessage listener for any dynamic SSE event
+      this.eventSource.onmessage = (e: MessageEvent) => {
+        try {
+          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+          const eventName = data?.event || e.type || "message";
+          if (eventName !== "call.ring" && eventName !== "system.ping") {
+            this.events.emit(eventName, data);
+          }
+        } catch (err) {
+          // Ignore unparseable ping/raw string messages
+        }
+      };
+
       this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data) as ICallRingParams;
+          const data = (typeof e.data === "string" ? JSON.parse(e.data) : e.data) as ICallRingParams;
           this.events.emit(EClientEventName.CALL_RING, data);
           if (data.call_token) {
             const wsUrl =

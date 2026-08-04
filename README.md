@@ -251,9 +251,20 @@ await client.setPresence("available"); // "available" | "busy" | "offline"
 
 | Event Name | Payload Type | Description |
 | :--- | :--- | :--- |
-| `call.ring` | `ICallRingEventPayload` | Triggered instantly when an incoming call starts ringing |
+| `call.ring` | `ICallRingParams` | Triggered instantly when an incoming call starts ringing |
 | `call.offer` | `Call` | Triggered when the WebRTC call object is ready to answer |
-| `agent.state` | `{ username, state, team_id }` | Real-time presence updates of team agents |
+| `agent.state` | `{ username, state }` | Real-time presence updates of team agents |
+| `agent.updated` | `Agent` | Fired when an agent profile (name, avatar, email) is updated |
+| `agent.created` | `Agent` | Fired when a new agent account is created |
+| `agent.deleted` | `{ id, username }` | Fired when an agent account is deleted |
+| `team.created` | `Team` | Fired when a workspace team is created |
+| `team.updated` | `Team` | Fired when team details/name are updated |
+| `team.deleted` | `{ id }` | Fired when a team is deleted |
+| `team.assigned` | `{ team_id, agent_id }` | Fired when an agent joins a team |
+| `team.unassigned` | `{ team_id, agent_id }` | Fired when an agent leaves a team |
+| `contact.created` | `Contact` | Fired when a contact is created |
+| `contact.updated` | `Contact` | Fired when contact info is updated |
+| `contact.deleted` | `{ id }` | Fired when a contact is deleted |
 | `error` | `{ code, message }` | General client errors or authentication failures |
 
 ### `ECallEventName` (Call Instance Events)
