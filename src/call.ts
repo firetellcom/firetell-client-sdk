@@ -114,7 +114,7 @@ export class Call extends SimpleEventEmitter {
   public async transfer(targetUsername: string, teamId: string = ""): Promise<void> {
     if (!this.callId) return;
     await this.client?.sendTransfer(this.callId, targetUsername, teamId);
-    this.destroy();
+    await this.destroy(false);
   }
 
   /**
@@ -197,12 +197,13 @@ export class Call extends SimpleEventEmitter {
   /**
    * Destroy/cleanup this call instance.
    * Uses _destroying flag to prevent infinite loop with hangup().
+   * @param sendHangup Whether to send call.hangup event to server (default: true, set to false for transfers)
    */
-  public async destroy(): Promise<void> {
+  public async destroy(sendHangup: boolean = true): Promise<void> {
     if (this._destroying) return;
     this._destroying = true;
 
-    if (this.active && this.client) {
+    if (sendHangup && this.active && this.client) {
       this.active = false;
       try {
         if (!this.callId) return;
