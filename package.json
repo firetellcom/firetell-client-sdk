@@ -1,7 +1,7 @@
 {
   "name": "@firetell/firetell-client-sdk",
-  "version": "1.0.0",
-  "description": "TypeScript/JavaScript SDK for Firetell WebRTC — make and receive audio/video calls via WebRTC signaling over WebSocket (JSON-RPC 2.0)",
+  "version": "1.0.1",
+  "description": "TypeScript/JavaScript SDK for Firetell WebRTC — make and receive audio/video calls via native per-call WebSocket signaling",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -13,9 +13,11 @@
     }
   },
   "scripts": {
+    "patch": "npm version patch",
     "build": "tsup",
     "lint": "eslint src/",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "publish": "npm run patch && npm run build && npm publish"
   },
   "files": [
     "dist",
@@ -31,7 +33,7 @@
     "voip",
     "firetell",
     "websocket",
-    "json-rpc",
+    "webrtc-signaling",
     "telephony",
     "sdk"
   ],

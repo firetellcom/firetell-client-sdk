@@ -137,13 +137,13 @@ client.events.on("call.offer", (incomingCall) => {
 
   // Example: Accept button click handler
   document.getElementById("btn-accept")?.addEventListener("click", async () => {
-    await incomingCall.answer();
+    await incomingCall.accept();
     console.log("Call Answered!");
   });
 
   // Example: Reject button click handler
   document.getElementById("btn-reject")?.addEventListener("click", async () => {
-    await incomingCall.hangup();
+    await incomingCall.reject();
   });
 });
 ```
@@ -177,6 +177,13 @@ await call.hold();
 
 // Unhold call
 await call.unhold();
+```
+
+### Transfer Call
+
+```typescript
+// Transfer active call to another agent in team
+await call.transfer("agent.jane", "team_support_id");
 ```
 
 ### Send DTMF Tones

@@ -34,8 +34,8 @@ Thank you for your interest in contributing! This guide will help you get starte
 ```
 src/
 ├── index.ts                    # Public API exports
-├── firetell-client.ts          # Main signaling client (WebSocket, JSON-RPC, session)
-├── call.ts                     # WebRTC call instance (media, SDP, call control)
+├── firetell-client.ts          # Main client (REST API calls, SSE event listeners, Call factory)
+├── call.ts                     # WebRTC call instance (per-call WebSocket signaling, WebRTC media, SDP, call control)
 ├── simple-event-emitter.ts     # Lightweight typed event emitter
 ├── enums/                      # Enum definitions
 │   ├── index.ts                # Barrel export
@@ -43,14 +43,14 @@ src/
 │   ├── call-event-name.enum.ts # Call-level event names
 │   ├── client-event-name.enum.ts # Client-level event names
 │   ├── storage-key.enum.ts     # localStorage key constants
-│   └── message-notification.enum.ts # JSON-RPC method names
+│   └── message-notification.enum.ts # Native WebSocket per-call event names
 └── interfaces/                 # TypeScript interfaces
     ├── index.ts                # Barrel export
     ├── session.interface.ts    # Session shape
     ├── call-options.interface.ts # Call constructor options
     ├── active-call.interface.ts # Reconnect response shape
     ├── jwt-payload.interface.ts # Decoded JWT payload
-    └── rpc-message.interface.ts # JSON-RPC response/error shapes
+    └── rpc-message.interface.ts # Event-based WebSocket message shapes
 ```
 
 ## Coding Conventions
