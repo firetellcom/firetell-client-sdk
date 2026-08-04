@@ -6,6 +6,8 @@
 
 Official TypeScript/JavaScript SDK for building WebRTC Voice & Video Communications applications on the Firetell Platform (CPaaS, Virtual PBX, Call Center, Voice AI, SIP Trunking).
 
+🎮 **Live Interactive Demo**: [https://developers.firetell.com/firetell-client-sdk/example/](https://developers.firetell.com/firetell-client-sdk/example/)
+
 ---
 
 ## 🌟 Key Features
