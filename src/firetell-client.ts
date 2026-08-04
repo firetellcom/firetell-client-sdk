@@ -9,20 +9,6 @@ import { API_ENDPOINTS } from "./constants/api-endpoints";
 
 const SDK_VERSION = "1.0.1";
 
-/** Event-based Native WebSocket message shape */
-export interface IWsEventMessage {
-  event: string;
-  data?: Record<string, unknown>;
-}
-
-/** Params for a call.state notification */
-interface ICallStateParams {
-  call_id: string;
-  state: ECallState;
-  sdp?: RTCSessionDescriptionInit;
-  reason?: string;
-}
-
 /** Params for a call.ring notification */
 export interface ICallRingParams {
   call_id: string;
@@ -72,7 +58,6 @@ export interface ISupervisionResponse {
 export class FiretellClient {
   public readonly sdkVersion = SDK_VERSION;
   private baseUrl = "";
-  private ws: WebSocket | null = null;
   private jwt: string = "";
   private jwtPayload: IJwtPayload | null = null;
   private wsServers: string[] = [];
@@ -189,7 +174,7 @@ export class FiretellClient {
 
       const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}?token=${encodeURIComponent(this.jwt)}`;
       this.eventSource = new EventSource(sseUrl, {
-        withCredentials: true,
+        withCredentials: false,
       });
 
       const forwardEvents = [
@@ -225,8 +210,13 @@ export class FiretellClient {
               data.ws_url ||
               this.wsServers[0] ||
               `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
-            this._connectCallWebSocket(wsUrl, data.call_token, data.call_id).catch(
-              (err) => console.error("Error connecting call WebSocket from SSE ring:", err)
+            this.createCallSession(data.call_token, wsUrl, data.call_id, {
+              to: data.to?.number || "",
+              from: data.from?.number || "",
+              from_name: data.from?.name || "",
+              isTransfer: data.is_transfer || false,
+            }).catch((err) =>
+              console.error("Error connecting call WebSocket from SSE ring:", err)
             );
           }
         } catch (err) {
@@ -246,6 +236,55 @@ export class FiretellClient {
    * Initiate a new outbound call via REST API, then open native WebSocket per call.
    * @param call Call instance
    * @param sdp RTCSessionDescription (full SDP)
+  /**
+   * Call REST API POST /v1/call-center/calls to initiate call creation
+   */
+  public async initiateCallRest(
+    to: string,
+    from?: string,
+    isVideo?: boolean
+  ): Promise<IMakeCallResponse> {
+    const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.MAKE_CALL}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+      body: JSON.stringify({
+        to,
+        from,
+        type: isVideo ? "video" : "audio",
+      }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || `HTTP ${response.status}: Failed to make call`);
+    }
+
+    return (await response.json()) as IMakeCallResponse;
+  }
+
+  /**
+   * Helper to create a Call instance and connect its dedicated per-call WebSocket
+   */
+  public async createCallSession(
+    callToken: string,
+    wsUrl: string,
+    callId: string,
+    options: import("./interfaces/call-options.interface").CallOptions
+  ): Promise<Call> {
+    const call = new Call(this, options);
+    call.callId = callId;
+    this.activeCalls.set(callId, call);
+    await call.connectSignaling(wsUrl, callToken);
+    return call;
+  }
+
+  /**
+   * Initiate a new outbound call via REST API, then open native WebSocket per call.
+   * @param call Call instance
+   * @param sdp RTCSessionDescription (full SDP)
    */
   public async makeCall(
     call: Call,
@@ -257,39 +296,12 @@ export class FiretellClient {
     if (!sdp) {
       throw new Error("Missing or invalid sdp");
     }
-    if (this.activeCalls.size > 0) {
-      throw new Error(
-        "Cannot make a new call while another call is active. Please hang up or reject the current call."
-      );
-    }
-
-    // 1. Call REST API POST /call-center/calls
-    const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.MAKE_CALL}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.jwt}`,
-      },
-      body: JSON.stringify({
-        to: call.to,
-        from: call.from,
-        type: call.isVideo ? "video" : "audio",
-      }),
-    });
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.message || `HTTP ${response.status}: Failed to make call`);
-    }
-
-    const data = (await response.json()) as IMakeCallResponse;
-    call.callId = data.call_id;
-    this.activeCalls.set(data.call_id, call);
-
-    // 2. Open Native WebSocket per call using call_token
-    await this._connectCallWebSocket(data.ws_url, data.call_token, data.call_id, sdp);
-
-    return data.call_id;
+    const res = await this.initiateCallRest(call.to, call.from, Boolean(call.isVideo));
+    call.callId = res.call_id;
+    this.activeCalls.set(res.call_id, call);
+    await call.connectSignaling(res.ws_url, res.call_token);
+    call.sendWsEvent("call.offer", { sdp: sdp.sdp });
+    return res.call_id;
   }
 
   /**
@@ -313,13 +325,7 @@ export class FiretellClient {
       throw new Error(errData.message || `HTTP ${response.status}: Failed to supervise call`);
     }
 
-    const data = (await response.json()) as ISupervisionResponse;
-
-    // Connect WebSocket using call_token
-    const defaultWsUrl = this.wsServers[0] || `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
-    await this._connectCallWebSocket(defaultWsUrl, data.call_token, callId);
-
-    return data;
+    return (await response.json()) as ISupervisionResponse;
   }
 
   /**
@@ -331,12 +337,9 @@ export class FiretellClient {
     targetUsername: string,
     teamId: string = ""
   ): Promise<void> {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendWsEvent("call.transfer", {
-        call_id: callId,
-        to: targetUsername,
-        team_id: teamId || undefined,
-      });
+    const call = this.activeCalls.get(callId);
+    if (call) {
+      await call.transfer(targetUsername, teamId);
       return;
     }
 
@@ -359,161 +362,6 @@ export class FiretellClient {
     }
 
     this.activeCalls.delete(callId);
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-
-  /**
-   * Connect native WebSocket for a specific call session.
-   * Sends session.connect with call_token within 3 seconds per server spec.
-   */
-  private _connectCallWebSocket(
-    wsUrl: string,
-    callToken: string,
-    callId: string,
-    sdp?: RTCSessionDescription
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(wsUrl);
-
-      const connectTimeout = setTimeout(() => {
-        if (this.ws) {
-          this.ws.close();
-          reject(new Error("Call WebSocket authentication timed out (3s)"));
-        }
-      }, 5000);
-
-      this.ws.onopen = () => {
-        this.connected = true;
-        // In-band session.connect event within 3 seconds
-        this.sendWsEvent("session.connect", { token: callToken });
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const parsed = JSON.parse(event.data);
-          if (parsed.event === "session.connected") {
-            clearTimeout(connectTimeout);
-
-            // Send call.offer if sdp is provided
-            if (sdp) {
-              this.sendWsEvent("call.offer", {
-                call_id: callId,
-                sdp: sdp.sdp,
-              });
-            }
-
-            resolve();
-          } else {
-            this._handleWebSocketMessage(event.data);
-          }
-        } catch (err) {
-          console.error("Error parsing WS message:", err);
-        }
-      };
-
-      this.ws.onerror = (err) => {
-        clearTimeout(connectTimeout);
-        this.connected = false;
-        reject(err);
-      };
-
-      this.ws.onclose = () => {
-        clearTimeout(connectTimeout);
-        this.connected = false;
-      };
-    });
-  }
-
-  /**
-   * Send Native Event-Based JSON message over WebSocket
-   */
-  public sendWsEvent(event: string, data: Record<string, unknown> = {}): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ event, data }));
-    } else {
-      console.warn("WebSocket is not open. Event skipped:", event);
-    }
-  }
-
-  /**
-   * Hang up active call
-   */
-  public async sendHangup(callId: string): Promise<void> {
-    this.sendWsEvent("call.hangup", { call_id: callId });
-    this.activeCalls.delete(callId);
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-
-  /**
-   * Accept an incoming call
-   */
-  public async sendAccept(
-    callId: string,
-    sdp: RTCSessionDescription
-  ): Promise<void> {
-    this.sendWsEvent("call.answer", {
-      call_id: callId,
-      sdp: sdp.sdp,
-    });
-  }
-
-  /**
-   * Reject an incoming call
-   */
-  public async sendReject(callId: string): Promise<void> {
-    this.sendWsEvent("call.reject", { call_id: callId });
-    this.activeCalls.delete(callId);
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-
-  /**
-   * Send Hold a Call
-   */
-  public async sendHold(
-    callId: string,
-    sdp: RTCSessionDescriptionInit
-  ): Promise<void> {
-    this.sendWsEvent("call.hold", { call_id: callId, sdp });
-  }
-
-  /**
-   * Send UnHold
-   */
-  public async sendUnHold(
-    callId: string,
-    sdp: RTCSessionDescriptionInit
-  ): Promise<void> {
-    this.sendWsEvent("call.unhold", { call_id: callId, sdp });
-  }
-
-  /**
-   * Send DTMF tone
-   */
-  public async sendDTMF(
-    callId: string,
-    digit: string,
-    duration: number = 250
-  ): Promise<void> {
-    if (!/^[0-9A-D*#]$/.test(digit)) {
-      throw new Error("Invalid DTMF digit. Must be 0-9, A-D, *, or #");
-    }
-    this.sendWsEvent("call.dtmf", { call_id: callId, digit, duration });
-  }
-
-  /**
-   * Send Mute state
-   */
-  public async sendMute(callId: string, muted: boolean): Promise<void> {
-    this.sendWsEvent("call.mute", { call_id: callId, muted });
   }
 
   /**
@@ -656,151 +504,15 @@ export class FiretellClient {
     this.events.emit(EClientEventName.CALL_OFFER, call);
   }
 
-  private _handleWebSocketMessage(eventData: string): void {
-    try {
-      const message = JSON.parse(eventData);
-      const eventName = message.event;
-      const data = message.data || {};
-
-      switch (eventName) {
-        case "call.offer": {
-          const fromVal =
-            typeof data.from === "object" && data.from
-              ? data.from.number
-              : data.from || data.caller_number || data.caller || "";
-          const fromNameVal =
-            typeof data.from === "object" && data.from
-              ? data.from.name || fromVal
-              : data.from_name || data.caller_name || "";
-          const toVal =
-            typeof data.to === "object" && data.to
-              ? data.to.number
-              : data.to || data.number || "";
-
-          this._handleIncomingCall({
-            call_id: data.call_id,
-            from: fromVal,
-            from_name: fromNameVal,
-            to: toVal,
-            sdp: data.sdp,
-            is_transfer: data.is_transfer || false,
-          });
-          break;
-        }
-        case "call.offered":
-          this._handleCallState({
-            call_id: data.call_id,
-            state: ECallState.TRYING,
-          });
-          break;
-        case "call.answered":
-          this._handleCallState({
-            call_id: data.call_id,
-            state: ECallState.ANSWERED,
-            sdp: data.sdp,
-          });
-          break;
-        case "call.held":
-          this._handleCallState({
-            call_id: data.call_id,
-            state: ECallState.ONHOLD,
-            sdp: data.sdp,
-          });
-          break;
-        case "call.unheld":
-          this._handleCallState({
-            call_id: data.call_id,
-            state: ECallState.ACTIVE,
-            sdp: data.sdp,
-          });
-          break;
-        case "call.ended":
-        case "call.rejected":
-          this._handleCallState({
-            call_id: data.call_id,
-            state: ECallState.ENDED,
-            reason: data.reason,
-          });
-          break;
-        case "call.sdp":
-        case "call.state":
-          this._handleCallState({
-            call_id: data.call_id,
-            state: (data.state as ECallState) || ECallState.RINGING,
-            sdp: data.sdp,
-            reason: data.reason,
-          });
-          break;
-        case "call.transferred":
-          // Transfer complete — clean up the transferring agent's call
-          this._handleCallState({
-            call_id: data.call_id,
-            state: ECallState.ENDED,
-            reason: "transferred",
-          });
-          break;
-        case "call.candidate_ack":
-          break;
-        case "session.pong":
-          break;
-        case "session.error":
-          console.error("WebSocket Session Error:", data.message);
-          this.events.emit(EClientEventName.ERROR, {
-            code: 400,
-            message: data.message,
-          });
-          this._handleCallState({
-            call_id: data.call_id,
-            state: ECallState.ERROR,
-            reason: data.message,
-          });
-          break;
-        default:
-          console.debug(`Received Event '${eventName}':`, data);
-      }
-    } catch (error) {
-      console.error("Error parsing WebSocket message:", error);
-    }
-  }
-
-  private _handleCallState(params: ICallStateParams): void {
-    const { call_id, state, sdp } = params;
-    const call = this.activeCalls.get(call_id);
-    if (!call) return;
-
-    if (sdp) {
-      const sdpInit: RTCSessionDescriptionInit =
-        typeof sdp === "string"
-          ? { type: "answer", sdp }
-          : (sdp as RTCSessionDescriptionInit);
-      void call.setRemoteDescription(sdpInit);
-    }
-    call.setSignalState(state, params as unknown as Record<string, unknown>);
-
-    if ([ECallState.ENDED, ECallState.ERROR, ECallState.CANCEL].includes(state)) {
-      this.activeCalls.delete(call_id);
-      call.active = false;
-      call.destroy();
-    }
-  }
-
   public logout(): void {
     this.activeCalls.forEach((call) => call.destroy());
     this.activeCalls.clear();
     this._cleanupSession();
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
   }
 
   public destroy(): void {
     this.activeCalls.forEach((call) => call.destroy());
     this.activeCalls.clear();
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
