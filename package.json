@@ -1,6 +1,6 @@
 {
   "name": "@firetell/firetell-client-sdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "TypeScript/JavaScript SDK for Firetell WebRTC — make and receive audio/video calls via native per-call WebSocket signaling",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -12,12 +12,16 @@
       "require": "./dist/index.cjs"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "patch": "npm version patch",
     "build": "tsup",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
-    "publish": "npm run patch && npm run build && npm publish"
+    "publish": "npm run build && npm publish --access=public --registry=https://registry.npmjs.org/"
   },
   "files": [
     "dist",
