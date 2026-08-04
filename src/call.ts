@@ -290,7 +290,13 @@ export class Call extends SimpleEventEmitter {
         team_id: teamId || undefined,
       });
     }
-    await this.destroy(false);
+    this.active = false;
+    this.cleanupPeerConnection();
+    if (this.client && this.callId) {
+      this.client.activeCalls.delete(this.callId);
+    }
+    this.state = ECallState.ENDED;
+    this.emit(ECallEventName.STATE, { state: ECallState.ENDED, reason: "Transferred" });
   }
 
   /**
@@ -465,7 +471,7 @@ export class Call extends SimpleEventEmitter {
     sdp: RTCSessionDescriptionInit
   ): Promise<void> {
     try {
-      if (this.peerConnection.signalingState === "stable") {
+      if (sdp.type === "answer" && this.peerConnection.signalingState === "stable") {
         return;
       }
       await this.peerConnection.setRemoteDescription(
