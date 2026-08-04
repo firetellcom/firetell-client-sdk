@@ -7,7 +7,8 @@ import { EStorageKey } from "./enums/storage-key.enum";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
 
-const SDK_VERSION = "1.0.1";
+declare const __SDK_VERSION__: string;
+const SDK_VERSION = typeof __SDK_VERSION__ !== "undefined" ? __SDK_VERSION__ : "1.0.1";
 
 /** Params for a call.ring notification */
 export interface ICallRingParams {
