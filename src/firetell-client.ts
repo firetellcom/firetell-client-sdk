@@ -7,7 +7,7 @@ import { EStorageKey } from "./enums/storage-key.enum";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
 
-const SDK_VERSION = "1.0.0";
+const SDK_VERSION = "1.0.1";
 
 /** Event-based Native WebSocket message shape */
 export interface IWsEventMessage {
@@ -189,19 +189,15 @@ export class FiretellClient {
 
       const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}?token=${encodeURIComponent(this.jwt)}`;
       this.eventSource = new EventSource(sseUrl, {
-        withCredentials: false,
-      });
-
-      this.eventSource.addEventListener("agent.state", (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          this.events.emit(EClientEventName.AGENT_STATE, data);
-        } catch (err) {
-          console.error("Error parsing agent.state event:", err);
-        }
+        withCredentials: true,
       });
 
       const forwardEvents = [
+        { name: "agent.state", enumName: EClientEventName.AGENT_STATE },
+        { name: "agent.state.forced", enumName: EClientEventName.AGENT_STATE_FORCED },
+        { name: "agent.created", enumName: EClientEventName.AGENT_CREATED },
+        { name: "agent.updated", enumName: EClientEventName.AGENT_UPDATED },
+        { name: "agent.deleted", enumName: EClientEventName.AGENT_DELETED },
         { name: "contact.created", enumName: EClientEventName.CONTACT_CREATED },
         { name: "contact.updated", enumName: EClientEventName.CONTACT_UPDATED },
         { name: "contact.deleted", enumName: EClientEventName.CONTACT_DELETED },
@@ -566,6 +562,51 @@ export class FiretellClient {
 
   public getJwtPayload(): IJwtPayload | null {
     return this.jwtPayload;
+  }
+
+  /**
+   * Helper to generate or retrieve a unique, persistent Device ID for browser environment.
+   * Uses localStorage when available, or falls back to random UUID.
+   * @param storageKey Key to store device ID in localStorage (default: "firetell_device_id")
+   * @returns Persistent unique device ID string
+   */
+  public static getOrCreateDeviceId(storageKey: string = "firetell_device_id"): string {
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+      try {
+        const existingId = localStorage.getItem(storageKey);
+        if (existingId && existingId.trim().length > 0) {
+          return existingId;
+        }
+      } catch {
+        // Handle private browsing or restricted storage
+      }
+    }
+
+    let newDeviceId: string;
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      newDeviceId = `web_${crypto.randomUUID()}`;
+    } else {
+      const rand = Math.random().toString(36).substring(2, 11) + Math.random().toString(36).substring(2, 11);
+      newDeviceId = `web_${Date.now().toString(36)}_${rand}`;
+    }
+
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(storageKey, newDeviceId);
+      } catch {
+        // Ignore quota errors
+      }
+    }
+
+    return newDeviceId;
+  }
+
+  /**
+   * Helper instance method to get or generate persistent browser Device ID.
+   * @param storageKey Custom key for localStorage (default: "firetell_device_id")
+   */
+  public getDeviceId(storageKey?: string): string {
+    return FiretellClient.getOrCreateDeviceId(storageKey);
   }
 
   private _cleanupSession(): void {
