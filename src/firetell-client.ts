@@ -189,7 +189,7 @@ export class FiretellClient {
 
       const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}?token=${encodeURIComponent(this.jwt)}`;
       this.eventSource = new EventSource(sseUrl, {
-        withCredentials: true,
+        withCredentials: false,
       });
 
       const forwardEvents = [
