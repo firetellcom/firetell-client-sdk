@@ -1,16 +1,24 @@
 import { ECallEventName } from "./enums/call-event-name.enum";
+import { EClientEventName } from "./enums/client-event-name.enum";
 import { ECallState } from "./enums/call-state.enum";
 import { CallOptions } from "./interfaces/call-options.interface";
 import { SimpleEventEmitter } from "./simple-event-emitter";
 import { FiretellClient } from "./firetell-client";
 
+/** Event-based Native WebSocket message shape */
+export interface IWsEventMessage {
+  event: string;
+  data?: Record<string, unknown>;
+}
+
 export class Call extends SimpleEventEmitter {
-  public callId: string | null = null ;
+  public callId: string | null = null;
   public from: string;
   public from_name: string;
   public to: string;
   public active: boolean = false;
   private client: FiretellClient | null;
+  private ws: WebSocket | null = null;
   private state: ECallState = ECallState.NONE;
   private peerConnection: RTCPeerConnection;
   public remoteDescription: RTCSessionDescriptionInit | null = null;
@@ -34,15 +42,169 @@ export class Call extends SimpleEventEmitter {
     this.isVideo = options.isVideo || false;
     this.isTransfer = options.isTransfer || false;
     this.isInternal = options.isInternal || false;
-    this.peerConnection = new RTCPeerConnection();
+    this.peerConnection = new RTCPeerConnection({
+      iceServers: this.client.iceServers.length
+        ? this.client.iceServers
+        : [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+  }
+
+  /**
+   * Open dedicated Native WebSocket signaling connection for this call session
+   * and authenticate with call_token within 3s.
+   */
+  public async connectSignaling(wsUrl: string, callToken: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.ws = new WebSocket(wsUrl);
+
+        const authTimeout = setTimeout(() => {
+          if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
+            this.ws.close();
+            this.ws = null;
+          }
+          reject(new Error("Call WebSocket authentication timed out after 3s"));
+        }, 3000);
+
+        this.ws.onopen = () => {
+          // Send session.connect with call_token
+          this.sendWsEvent("session.connect", { call_token: callToken });
+        };
+
+        this.ws.onmessage = (event: MessageEvent) => {
+          try {
+            const parsed = JSON.parse(event.data) as IWsEventMessage;
+            this.handleWsMessage(parsed, () => {
+              clearTimeout(authTimeout);
+              resolve();
+            });
+          } catch (err) {
+            console.error("Call.connectSignaling::JSON parse error:", err);
+          }
+        };
+
+        this.ws.onerror = (err) => {
+          clearTimeout(authTimeout);
+          this.emit(ECallEventName.STATE, { state: ECallState.ERROR, reason: "WebSocket error" });
+          reject(err);
+        };
+
+        this.ws.onclose = () => {
+          clearTimeout(authTimeout);
+          this.ws = null;
+          if (this.active && !this._destroying) {
+            this.destroy(false);
+          }
+        };
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  /**
+   * Helper to send JSON event message over this call's WebSocket
+   */
+  public sendWsEvent(event: string, data?: Record<string, unknown>): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ event, data }));
+    }
+  }
+
+  /**
+   * Process incoming WebSocket signaling messages for this call
+   */
+  private handleWsMessage(msg: IWsEventMessage, onConnectSuccess: () => void): void {
+    const { event, data } = msg;
+
+    switch (event) {
+      case "session.connected": {
+        onConnectSuccess();
+        break;
+      }
+      case "session.error": {
+        console.error("Call.handleWsMessage::session.error:", data);
+        this.emit(ECallEventName.STATE, {
+          state: ECallState.ERROR,
+          reason: (data?.message as string) || "Session error",
+        });
+        break;
+      }
+      case "call.offer": {
+        if (data) {
+          if (data.sdp) {
+            this.remoteDescription = data.sdp as RTCSessionDescriptionInit;
+            void this.setRemoteDescription(this.remoteDescription);
+          }
+          if (data.from) this.from = (data.from as { number?: string })?.number || String(data.from);
+          if (data.from_name) this.from_name = String(data.from_name);
+          if (data.is_transfer !== undefined) this.isTransfer = Boolean(data.is_transfer);
+        }
+        this.state = ECallState.RINGING;
+        this.emit(ECallEventName.STATE, { state: ECallState.RINGING, data });
+        if (this.client) {
+          this.client.events.emit(EClientEventName.CALL_OFFER, this);
+        }
+        break;
+      }
+      case "call.answered": {
+        if (data?.sdp) {
+          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        }
+        this.state = ECallState.ACTIVE;
+        this.active = true;
+        this.emit(ECallEventName.STATE, { state: ECallState.ANSWERED, data });
+        break;
+      }
+      case "call.held": {
+        if (data?.sdp) {
+          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        }
+        this.state = ECallState.ONHOLD;
+        this.emit(ECallEventName.STATE, { state: ECallState.ONHOLD, data });
+        break;
+      }
+      case "call.unheld": {
+        if (data?.sdp) {
+          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        }
+        this.state = ECallState.ACTIVE;
+        this.emit(ECallEventName.STATE, { state: ECallState.ACTIVE, data });
+        break;
+      }
+      case "call.ended":
+      case "call.rejected":
+      case "call.canceled": {
+        this.state = ECallState.ENDED;
+        this.emit(ECallEventName.STATE, {
+          state: ECallState.ENDED,
+          reason: (data?.reason as string) || event,
+        });
+        this.destroy(false);
+        break;
+      }
+      case "call.sdp":
+      case "call.state": {
+        if (data?.sdp) {
+          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        }
+        if (data?.state) {
+          const nextState = (data.state as ECallState) || ECallState.RINGING;
+          this.state = nextState === ECallState.ANSWERED ? ECallState.ACTIVE : nextState;
+        }
+        this.emit(ECallEventName.STATE, data || {});
+        break;
+      }
+    }
   }
 
   /**
    * Start an outbound call.
-   * Sets up WebRTC media, creates offer, gathers full ICE candidates,
-   * then sends call.offer via the client.
+   * Initiates REST call creation, connects dedicated WS signaling,
+   * gathers full ICE candidates, and sends call.offer.
    */
   public async start(): Promise<void> {
+    if (!this.client) throw new Error("Client is not attached to Call");
     this.active = true;
     this.state = ECallState.INITIATED;
     try {
@@ -52,13 +214,19 @@ export class Call extends SimpleEventEmitter {
 
       // Wait for all ICE candidates to be gathered (Full ICE, not Trickle)
       const sdp = await this.getSDPFull();
-      const callId = await this.client!.makeCall(this, sdp);
-      this.callId = callId;
+      const res = await this.client.initiateCallRest(this.to, this.from, Boolean(this.isVideo));
+      this.callId = res.call_id;
+
+      // Connect dedicated WS for this call session
+      await this.connectSignaling(res.ws_url, res.call_token);
+
+      // Send call.offer over WebSocket
+      this.sendWsEvent("call.offer", { sdp: sdp.sdp });
       this.active = true;
     } catch (error: unknown) {
       this.active = false;
       this.state = ECallState.ERROR;
-      this.destroy();
+      this.destroy(false);
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
@@ -67,21 +235,18 @@ export class Call extends SimpleEventEmitter {
    * Hang up this call
    */
   public async hangup(): Promise<void> {
-    if (!this.active || !this.client) return;
+    if (!this.active) return;
     this.active = false;
-    try {
-      if (!this.callId) return;
-      await this.client.sendHangup(this.callId);
-    } catch (error) {
-      console.error("hangup::Error:", error);
+    if (this.callId && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.sendWsEvent("call.hangup", { call_id: this.callId });
     }
-    this.destroy();
+    this.destroy(false);
   }
 
   /**
    * Accept an incoming call.
    * Sets up WebRTC media, sets remote description, creates answer,
-   * gathers full ICE, then sends call.answer via the client.
+   * gathers full ICE, then sends call.answer over WebSocket.
    */
   public async accept(): Promise<void> {
     if (!this.callId) throw new Error("callId is missing");
@@ -91,7 +256,11 @@ export class Call extends SimpleEventEmitter {
     const answer = await this.peerConnection.createAnswer();
     await this.peerConnection.setLocalDescription(answer);
     const sdp = await this.getSDPFull();
-    await this.client!.sendAccept(this.callId, sdp);
+
+    this.sendWsEvent("call.answer", {
+      call_id: this.callId,
+      sdp: sdp.sdp,
+    });
     this.active = true;
     this.state = ECallState.ANSWERED;
   }
@@ -100,9 +269,10 @@ export class Call extends SimpleEventEmitter {
    * Reject an incoming call
    */
   public async reject(): Promise<void> {
-    if (!this.callId) return;
-    await this.client?.sendReject(this.callId);
-    this.destroy();
+    if (this.callId && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.sendWsEvent("call.reject", { call_id: this.callId });
+    }
+    this.destroy(false);
   }
 
   /**
@@ -113,7 +283,13 @@ export class Call extends SimpleEventEmitter {
    */
   public async transfer(targetUsername: string, teamId: string = ""): Promise<void> {
     if (!this.callId) return;
-    await this.client?.sendTransfer(this.callId, targetUsername, teamId);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.sendWsEvent("call.transfer", {
+        call_id: this.callId,
+        to: targetUsername,
+        team_id: teamId || undefined,
+      });
+    }
     await this.destroy(false);
   }
 
@@ -123,11 +299,15 @@ export class Call extends SimpleEventEmitter {
    * @param duration Duration in ms (default: 250)
    */
   public async sendDTMF(digit: string, duration?: number): Promise<void> {
-    if (!this.active || !this.client) {
+    if (!this.active) {
       throw new Error("Cannot send DTMF: call is not active");
     }
     if (!this.callId) return;
-    await this.client.sendDTMF(this.callId, digit, duration);
+    this.sendWsEvent("call.dtmf", {
+      call_id: this.callId,
+      digit,
+      duration: duration || 250,
+    });
   }
 
   /**
@@ -135,7 +315,7 @@ export class Call extends SimpleEventEmitter {
    * Stops local audio tracks and notifies the server.
    */
   public async mute(): Promise<void> {
-    if (!this.active || !this.client) {
+    if (!this.active) {
       throw new Error("Cannot mute: call is not active");
     }
     if (!this.callId) return;
@@ -145,7 +325,7 @@ export class Call extends SimpleEventEmitter {
       });
     }
     this.isMuted = true;
-    await this.client.sendMute(this.callId, true);
+    this.sendWsEvent("call.mute", { call_id: this.callId, muted: true });
     this.emit(ECallEventName.MUTE, { muted: true });
   }
 
@@ -154,7 +334,7 @@ export class Call extends SimpleEventEmitter {
    * Resumes local audio tracks and notifies the server.
    */
   public async unmute(): Promise<void> {
-    if (!this.active || !this.client) {
+    if (!this.active) {
       throw new Error("Cannot unmute: call is not active");
     }
     if (!this.callId) return;
@@ -164,7 +344,7 @@ export class Call extends SimpleEventEmitter {
       });
     }
     this.isMuted = false;
-    await this.client.sendMute(this.callId, false);
+    this.sendWsEvent("call.mute", { call_id: this.callId, muted: false });
     this.emit(ECallEventName.MUTE, { muted: false });
   }
 
@@ -177,6 +357,45 @@ export class Call extends SimpleEventEmitter {
     } else {
       await this.mute();
     }
+  }
+
+  /**
+   * Put the call on hold
+   */
+  public async onhold(): Promise<void> {
+    if (!this.callId) return;
+    this.peerConnection.getTransceivers().forEach((t) => {
+      if (t.sender.track) {
+        t.direction = "sendonly";
+      }
+    });
+
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    const sdp = await this.getSDPFull();
+    this.sendWsEvent("call.hold", { call_id: this.callId, sdp: sdp.sdp });
+    this.state = ECallState.ONHOLD;
+  }
+
+  /**
+   * Resume a held call
+   */
+  public async unhold(): Promise<void> {
+    if (this.state !== ECallState.ONHOLD) {
+      throw new Error("Call is not on hold");
+    }
+    if (!this.callId) return;
+    this.peerConnection.getTransceivers().forEach((t) => {
+      if (t.sender.track) {
+        t.direction = "sendrecv";
+      }
+    });
+
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    const sdp = await this.getSDPFull();
+    this.sendWsEvent("call.hold", { call_id: this.callId, sdp: sdp.sdp });
+    this.state = ECallState.ANSWERED;
   }
 
   /**
@@ -195,32 +414,47 @@ export class Call extends SimpleEventEmitter {
   }
 
   /**
+   * Whether the call is currently on hold
+   */
+  public get isHold(): boolean {
+    return this.state === ECallState.ONHOLD;
+  }
+
+  /**
    * Destroy/cleanup this call instance.
-   * Uses _destroying flag to prevent infinite loop with hangup().
+   * Closes WebRTC PeerConnection, stops local/remote media tracks,
+   * closes dedicated WebSocket connection, and clears event listeners.
    * @param sendHangup Whether to send call.hangup event to server (default: true, set to false for transfers)
    */
   public async destroy(sendHangup: boolean = true): Promise<void> {
     if (this._destroying) return;
     this._destroying = true;
 
-    if (sendHangup && this.active && this.client) {
-      this.active = false;
-      try {
-        if (!this.callId) return;
-        await this.client.sendHangup(this.callId);
-      } catch {
-        // Best-effort hangup during destroy
-      }
+    if (sendHangup && this.active && this.callId && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.sendWsEvent("call.hangup", { call_id: this.callId });
     }
     this.active = false;
+
+    // Close dedicated Call WebSocket
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
+
+    if (this.client && this.callId) {
+      this.client.activeCalls.delete(this.callId);
+    }
     this.client = null;
+
     this.cleanupPeerConnection();
-    
+
     if (this.state !== ECallState.ENDED && this.state !== ECallState.ERROR) {
       this.state = ECallState.ENDED;
       this.emit(ECallEventName.STATE, { state: ECallState.ENDED, reason: "Local Hangup" });
     }
-    
+
     this.offAll();
   }
 
@@ -231,6 +465,9 @@ export class Call extends SimpleEventEmitter {
     sdp: RTCSessionDescriptionInit
   ): Promise<void> {
     try {
+      if (this.peerConnection.signalingState === "stable") {
+        return;
+      }
       await this.peerConnection.setRemoteDescription(
         new RTCSessionDescription(sdp)
       );
@@ -248,8 +485,8 @@ export class Call extends SimpleEventEmitter {
     try {
       this.cleanupPeerConnection();
       this.peerConnection = new RTCPeerConnection({
-        iceServers: this.client!.iceServers.length
-          ? this.client!.iceServers
+        iceServers: this.client?.iceServers.length
+          ? this.client.iceServers
           : [{ urls: "stun:stun.l.google.com:19302" }],
       });
 
@@ -315,50 +552,6 @@ export class Call extends SimpleEventEmitter {
         }
       };
     });
-  }
-
-  /**
-   * Put the call on hold
-   */
-  public async onhold(): Promise<void> {
-    if (!this.callId) return;
-    this.peerConnection.getTransceivers().forEach((t) => {
-      if (t.sender.track) {
-        t.direction = "sendonly";
-      }
-    });
-
-    const offer = await this.peerConnection.createOffer();
-    await this.peerConnection.setLocalDescription(offer);
-    await this.client!.sendHold(this.callId, offer);
-    this.state = ECallState.ONHOLD;
-  }
-
-  /**
-   * Resume a held call
-   */
-  public async unhold(): Promise<void> {
-    if (this.state !== ECallState.ONHOLD) {
-      throw new Error("Call is not on hold");
-    }
-    if (!this.callId) return;
-    this.peerConnection.getTransceivers().forEach((t) => {
-      if (t.sender.track) {
-        t.direction = "sendrecv";
-      }
-    });
-
-    const offer = await this.peerConnection.createOffer();
-    await this.peerConnection.setLocalDescription(offer);
-    await this.client!.sendUnHold(this.callId, offer);
-    this.state = ECallState.ANSWERED;
-  }
-
-  /**
-   * Whether the call is currently on hold
-   */
-  public get isHold(): boolean {
-    return this.state === ECallState.ONHOLD;
   }
 
   /**
