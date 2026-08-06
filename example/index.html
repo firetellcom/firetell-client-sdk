@@ -335,6 +335,20 @@
           }
         });
 
+        // Connection State (handles background drops and reconnects without logging out)
+        client.events.on("connection.state", (state) => {
+          if (state === "connected") {
+            setConnectionStatus("online", "Connected");
+            log("Real-time connection established", "success");
+          } else if (state === "connecting") {
+            setConnectionStatus("warning", "Reconnecting...");
+            log("Reconnecting to server...", "warn");
+          } else if (state === "disconnected") {
+            setConnectionStatus("error", "Connection lost");
+            log("Real-time connection lost. Retrying in background...", "error");
+          }
+        });
+
         // Error
         client.events.on("error", (error) => {
           log(`Error [${error.code}]: ${error.message}`, "error");

@@ -276,6 +276,7 @@ await client.setPresence("ready");
 | :--- | :--- | :--- |
 | `call.ring` | `ICallRingParams` | Triggered instantly when an incoming call starts ringing |
 | `call.offer` | `Call` | Triggered when the WebRTC call object is ready to answer |
+| `connection.state` | `'connected' \| 'connecting' \| 'disconnected'` | Real-time connection status updates (handles background drops and reconnects without logging out) |
 | `agent.state` | `{ username, state }` | Real-time presence updates (`online`, `available`, `incall`, `busy`, `offline`) |
 | `agent.state.forced` | `{ target_username, new_state, forced_by, reason }` | Fired when a supervisor forces an agent's state to `offline` |
 | `agent.updated` | `Agent` | Fired when an agent profile (name, avatar, email) is updated |

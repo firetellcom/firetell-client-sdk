@@ -22,4 +22,5 @@ export enum EClientEventName {
     TEAM_DELETED = "team.deleted",
     TEAM_ASSIGNED = "team.assigned",
     TEAM_UNASSIGNED = "team.unassigned",
+    CONNECTION_STATE = "connection.state",
 }

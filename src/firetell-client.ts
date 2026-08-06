@@ -244,8 +244,50 @@ export class FiretellClient {
         }
       });
 
+      this.eventSource.addEventListener("system.error", (e: MessageEvent) => {
+        try {
+          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+          console.error("SSE system error received:", data);
+          if (data?.code === "SSE_LIMIT_EXCEEDED") {
+            // Close connection, clear session, and stop reconnecting
+            if (this.eventSource) {
+              this.eventSource.close();
+              this.eventSource = null;
+            }
+            this.session = null;
+            this.events.emit("error", new Error(data.message || "SSE connection limit exceeded"));
+            this.events.emit(EClientEventName.SESSION, null);
+          }
+        } catch (err) {
+          console.error("Error handling system.error event:", err);
+        }
+      });
+
+      this.eventSource.onopen = () => {
+        console.log("SSE EventSource connected.");
+        this.connected = true;
+        this.events.emit(EClientEventName.CONNECTION_STATE, "connected");
+      };
+
       this.eventSource.onerror = (err) => {
         console.warn("SSE EventSource error:", err);
+        
+        this.connected = false;
+        this.events.emit(EClientEventName.CONNECTION_STATE, "disconnected");
+
+        if (this.eventSource && this.eventSource.readyState === EventSource.CLOSED) {
+          if (this.isReconnecting) return;
+          this.isReconnecting = true;
+          console.log("SSE EventSource disconnected. Reconnecting in 3s...");
+          this.events.emit(EClientEventName.CONNECTION_STATE, "connecting");
+          setTimeout(() => {
+            this.isReconnecting = false;
+            // Only reconnect if we haven't logged out or initialized another connection
+            if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
+              this._initEventStream();
+            }
+          }, 3000);
+        }
       };
     } catch (err) {
       console.warn("EventSource initialization skipped or unsupported:", err);
