@@ -263,6 +263,24 @@
       let callStartTime = null;
       const agents = new Map(); // username → state
 
+      // Ringtone
+      const ringtone = new Audio("ringtone-025.mp3");
+      ringtone.loop = true;
+
+      function startRingtone() {
+        if (ringtone.paused) {
+          ringtone.currentTime = 0;
+          ringtone.play().catch((err) => {
+            console.warn("Ringtone play blocked by browser security/interaction policy:", err.message);
+          });
+        }
+      }
+
+      function stopRingtone() {
+        ringtone.pause();
+        ringtone.currentTime = 0;
+      }
+
       // ═══════════════════════════════════════
       // Init & Connect
       // ═══════════════════════════════════════
@@ -380,6 +398,8 @@
               : `Incoming call for ${toName}`;
           document.getElementById("incomingBanner").style.display = "block";
 
+          startRingtone();
+
           log(
             `🔔 Instant Ring Alert from ${fromName}${fromNum}` +
               (ringData.is_transfer ? " (transfer)" : ""),
@@ -401,6 +421,9 @@
             ? "Transferred call — WebRTC Ready"
             : "Incoming call — WebRTC Ready";
           document.getElementById("incomingBanner").style.display = "block";
+
+          startRingtone();
+
           log(
             `WebRTC offer ready for call ${call.callId} from ${label}`,
             "success",
@@ -411,6 +434,7 @@
             if (["CANCEL", "ENDED", "ERROR"].includes(params.state)) {
               document.getElementById("incomingBanner").style.display = "none";
               incomingCall = null;
+              stopRingtone();
               log(
                 `Incoming call ${params.state}: ${params.reason || ""}`,
                 "warn",
@@ -519,6 +543,7 @@
 
         const call = incomingCall;
         incomingCall = null;
+        stopRingtone();
 
         try {
           bindCallEvents(
@@ -539,6 +564,7 @@
       async function rejectIncoming() {
         if (!incomingCall) return;
         document.getElementById("incomingBanner").style.display = "none";
+        stopRingtone();
 
         try {
           await incomingCall.reject();
@@ -679,6 +705,8 @@
           client = null;
         }
         activeCall = null;
+        incomingCall = null;
+        stopRingtone();
         agents.clear();
         stopTimer();
         hide("sessionCard");
