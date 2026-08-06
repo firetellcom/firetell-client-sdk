@@ -1,6 +1,6 @@
 {
   "name": "@firetell/firetell-client-sdk",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "TypeScript/JavaScript SDK for Firetell WebRTC — make and receive audio/video calls via native per-call WebSocket signaling",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",

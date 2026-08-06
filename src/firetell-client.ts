@@ -65,6 +65,8 @@ export class FiretellClient {
   public iceServers: RTCIceServer[] = [];
   private session: ISession | null = null;
   private isReconnecting: boolean = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelay = 3000;
   private webRTCChecked: boolean = false;
   private eventSource: EventSource | null = null;
 
@@ -266,6 +268,11 @@ export class FiretellClient {
       this.eventSource.onopen = () => {
         console.log("SSE EventSource connected.");
         this.connected = true;
+        this.reconnectDelay = 3000; // Reset backoff delay on successful connection
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
         this.events.emit(EClientEventName.CONNECTION_STATE, "connected");
       };
 
@@ -276,17 +283,27 @@ export class FiretellClient {
         this.events.emit(EClientEventName.CONNECTION_STATE, "disconnected");
 
         if (this.eventSource && this.eventSource.readyState === EventSource.CLOSED) {
-          if (this.isReconnecting) return;
-          this.isReconnecting = true;
-          console.log("SSE EventSource disconnected. Reconnecting in 3s...");
+          if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+          }
+
+          // Calculate next backoff delay with random jitter (max 60 seconds)
+          const currentDelay = this.reconnectDelay;
+          const jitter = Math.random() * 1000;
+          const nextDelay = currentDelay + jitter;
+
+          this.reconnectDelay = Math.min(this.reconnectDelay * 2, 60000);
+
+          console.log(`SSE EventSource disconnected. Reconnecting in ${Math.round(nextDelay)}ms...`);
           this.events.emit(EClientEventName.CONNECTION_STATE, "connecting");
-          setTimeout(() => {
-            this.isReconnecting = false;
+
+          this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
             // Only reconnect if we haven't logged out or initialized another connection
             if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
               this._initEventStream();
             }
-          }, 3000);
+          }, nextDelay);
         }
       };
     } catch (err) {
@@ -523,6 +540,11 @@ export class FiretellClient {
     this.session = null;
     this.events.emit(EClientEventName.SESSION, null);
     this.events.offAll();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectDelay = 3000;
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
@@ -575,6 +597,11 @@ export class FiretellClient {
   public destroy(): void {
     this.activeCalls.forEach((call) => call.destroy());
     this.activeCalls.clear();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectDelay = 3000;
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
