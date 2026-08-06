@@ -11,6 +11,27 @@
     />
     <script src="../dist/index.global.js"></script>
     <link rel="stylesheet" href="style.css" />
+    <style>
+      .agent-call-btn {
+        background: var(--border);
+        border: none;
+        color: var(--text);
+        padding: 2px 6px;
+        font-size: 9px;
+        border-radius: 10px;
+        margin-left: 6px;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.1s;
+      }
+      .agent-call-btn:hover {
+        background: var(--primary);
+        color: #fff;
+        transform: scale(1.05);
+      }
+      .agent-call-btn:active {
+        transform: scale(0.95);
+      }
+    </style>
   </head>
 
   <body>
@@ -304,12 +325,27 @@
             show("dialerCard");
             show("agentsCard");
             hide("loginCard");
+            fetchAgents();
           } else {
             setConnectionStatus("error", "Disconnected");
             hide("sessionCard");
             hide("dialerCard");
             hide("agentsCard");
             show("loginCard");
+          }
+        });
+
+        // Connection State (handles background drops and reconnects without logging out)
+        client.events.on("connection.state", (state) => {
+          if (state === "connected") {
+            setConnectionStatus("online", "Connected");
+            log("Real-time connection established", "success");
+          } else if (state === "connecting") {
+            setConnectionStatus("warning", "Reconnecting...");
+            log("Reconnecting to server...", "warn");
+          } else if (state === "disconnected") {
+            setConnectionStatus("error", "Connection lost");
+            log("Real-time connection lost. Retrying in background...", "error");
           }
         });
 
@@ -396,7 +432,7 @@
           const payload = params.data || params;
           const { id, username, state, reason } = payload;
           const agentKey = username || id;
-          if (state === "available") {
+          if (state && state !== "offline") {
             agents.set(agentKey, state);
           } else {
             agents.delete(agentKey);
@@ -715,6 +751,37 @@
         document.getElementById("connStatusText").textContent = text;
       }
 
+      async function fetchAgents() {
+        const token = document.getElementById("tokenInput").value.trim();
+        let baseUrl = document.getElementById("baseUrlInput").value.trim();
+        if (!token || !baseUrl) return;
+
+        try {
+          if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+            baseUrl = `https://${baseUrl}`;
+          }
+          const response = await fetch(`${baseUrl}/api/v1/agents?limit=100`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          if (response.ok) {
+            const result = await response.json();
+            if (result && Array.isArray(result.data)) {
+              agents.clear();
+              for (const agent of result.data) {
+                if (agent.state && agent.state !== "offline") {
+                  agents.set(agent.username, agent.state);
+                }
+              }
+              renderAgents();
+            }
+          }
+        } catch (error) {
+          log(`Failed to fetch agents: ${error.message}`, "error");
+        }
+      }
+
       function renderAgents() {
         const container = document.getElementById("agentList");
         if (agents.size === 0) {
@@ -722,12 +789,26 @@
             '<span class="text-muted">No agents online</span>';
           return;
         }
-        container.innerHTML = Array.from(agents.keys())
-          .map(
-            (name) =>
-              `<span class="agent-tag"><span class="status-dot online" style="width:6px;height:6px;"></span>${name}</span>`,
-          )
+        const currentUser = client && client.getSessionInfo() ? client.getSessionInfo().username : "";
+        container.innerHTML = Array.from(agents.entries())
+          .map(([name, state]) => {
+            let dotClass = "online";
+            if (state === "incall") {
+              dotClass = "warning";
+            } else if (state === "busy") {
+              dotClass = "error";
+            }
+            const callBtnHtml = name !== currentUser
+              ? `<button class="agent-call-btn" onclick="callAgent('${name}')">📞</button>`
+              : "";
+            return `<span class="agent-tag" title="State: ${state}"><span class="status-dot ${dotClass}" style="width:6px;height:6px;"></span>${name}${callBtnHtml}</span>`;
+          })
           .join("");
+      }
+
+      function callAgent(username) {
+        document.getElementById("calleeInput").value = username;
+        makeCall(false);
       }
 
       function show(id) {

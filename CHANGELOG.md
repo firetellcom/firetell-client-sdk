@@ -5,9 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-08-06
+
+### Added
+- **SSE Reconnection Exponential Backoff**: Implemented exponential backoff with random jitter for automatic background reconnection.
+
+### Changed & Fixed
+- **Timer Safety**: Clears active reconnect timers on session cleanup and SDK destroy to avoid background connection leaks.
+- **Strict Typing**: Typed `reconnectTimer` using `ReturnType<typeof setTimeout>` instead of `any`.
+
+## [1.0.5] - 2026-08-06
+
+### Added
+
+- **SSE Connection State Tracking**: Added `connection.state` event (`'connected' | 'connecting' | 'disconnected'`) to EClientEventName.
+- **SSE Connection Limit Handling**: Listens to the `system.error` SSE event with code `SSE_LIMIT_EXCEEDED` to gracefully close EventSource connection and clear session.
+
+### Changed & Fixed
+
+- **Improved Network Resiliency**: SDK now emits `connection.state` updates for temporary network drops without clearing the session state, avoiding forced logouts.
+
 ## [1.0.4] - 2026-08-04
 
 ### Added & Fixed
+
 - **Complete Real-Time Event Stream Support**: Added event forwarding for team events (`team.created`, `team.updated`, `team.deleted`, `team.assigned`, `team.unassigned`) and agent profile/presence updates (`agent.updated`, `agent.deleted`, `agent.state`, `agent.state.forced`).
 - **Dynamic SSE Fallback Listener**: Added automatic `onmessage` listener on `EventSource` so any custom or new SSE event emitted by backend is automatically forwarded through `client.events.emit(eventName, data)`.
 

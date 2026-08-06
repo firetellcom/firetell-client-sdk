@@ -235,12 +235,35 @@ Track team presence and status changes in real-time via Server-Sent Events (SSE)
 
 ```typescript
 // Listen for agent status changes
-client.events.on("agent.state", ({ username, state, team_id }) => {
-  console.log(`Agent ${username} is now ${state}`); // "available" | "busy" | "offline"
+client.events.on("agent.state", ({ username, state }) => {
+  // States: "online" | "available" | "incall" | "busy" | "offline"
+  console.log(`Agent ${username} is now ${state}`);
 });
 
-// Change current agent presence status
-await client.setPresence("available"); // "available" | "busy" | "offline"
+// Listen for forced state changes by supervisors
+client.events.on("agent.state.forced", ({ target_username, new_state, forced_by, reason }) => {
+  console.log(`Agent ${target_username} was forced ${new_state} by ${forced_by}: ${reason}`);
+});
+```
+
+**Agent Presence States:**
+
+| State | Description |
+| :--- | :--- |
+| `online` | Agent is actively connected via SSE event stream |
+| `available` | Agent is reachable via VoIP push (has registered device) but not actively streaming SSE |
+| `incall` | Agent is in an active call |
+| `busy` | Agent is busy (set manually by agent — Do Not Disturb) |
+| `offline` | Agent has no active connections or registered push devices |
+
+### Set Own Presence
+
+```typescript
+// Set "Do Not Disturb" — agent won't receive incoming calls
+await client.setPresence("busy");
+
+// Return to active state (system determines: "online" or "available")
+await client.setPresence("ready");
 ```
 
 ---
@@ -253,7 +276,9 @@ await client.setPresence("available"); // "available" | "busy" | "offline"
 | :--- | :--- | :--- |
 | `call.ring` | `ICallRingParams` | Triggered instantly when an incoming call starts ringing |
 | `call.offer` | `Call` | Triggered when the WebRTC call object is ready to answer |
-| `agent.state` | `{ username, state }` | Real-time presence updates of team agents |
+| `connection.state` | `'connected' \| 'connecting' \| 'disconnected'` | Real-time connection status updates (handles background drops and reconnects without logging out) |
+| `agent.state` | `{ username, state }` | Real-time presence updates (`online`, `available`, `incall`, `busy`, `offline`) |
+| `agent.state.forced` | `{ target_username, new_state, forced_by, reason }` | Fired when a supervisor forces an agent's state to `offline` |
 | `agent.updated` | `Agent` | Fired when an agent profile (name, avatar, email) is updated |
 | `agent.created` | `Agent` | Fired when a new agent account is created |
 | `agent.deleted` | `{ id, username }` | Fired when an agent account is deleted |
