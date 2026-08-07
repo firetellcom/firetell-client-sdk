@@ -283,9 +283,7 @@ Error event pushed by the server.
 
 ---
 
-## Workspace Background Events (SSE Stream)
-
-Workspace-wide real-time events (agent status, incoming call ring popups) are consumed over **Server-Sent Events (SSE)** at `GET /api/v1/call-center/events/stream`:
+Workspace-wide real-time events (agent status, incoming call ring popups) are consumed over **Server-Sent Events (SSE)** at `GET /stream`:
 
 - `call.ring`: Incoming call notification payload `{ call_id, from, to }`
 - `agent.state`: Teammate status payload `{ username, state }`

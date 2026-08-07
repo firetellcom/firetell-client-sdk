@@ -21,7 +21,9 @@
         border-radius: 10px;
         margin-left: 6px;
         cursor: pointer;
-        transition: background 0.2s, transform 0.1s;
+        transition:
+          background 0.2s,
+          transform 0.1s;
       }
       .agent-call-btn:hover {
         background: var(--primary);
@@ -271,7 +273,10 @@
         if (ringtone.paused) {
           ringtone.currentTime = 0;
           ringtone.play().catch((err) => {
-            console.warn("Ringtone play blocked by browser security/interaction policy:", err.message);
+            console.warn(
+              "Ringtone play blocked by browser security/interaction policy:",
+              err.message,
+            );
           });
         }
       }
@@ -302,7 +307,10 @@
           document.getElementById("sdkVersion").textContent =
             `SDK v${client.sdkVersion}`;
 
-          log(`Initializing client (Device ID: ${client.getDeviceId()})…`, "info");
+          log(
+            `Initializing client (Device ID: ${client.getDeviceId()})…`,
+            "info",
+          );
           setupClientEvents();
 
           const session = await client.ready;
@@ -363,7 +371,10 @@
             log("Reconnecting to server...", "warn");
           } else if (state === "disconnected") {
             setConnectionStatus("error", "Connection lost");
-            log("Real-time connection lost. Retrying in background...", "error");
+            log(
+              "Real-time connection lost. Retrying in background...",
+              "error",
+            );
           }
         });
 
@@ -462,22 +473,34 @@
             agents.delete(agentKey);
           }
           renderAgents();
-          log(`Agent ${agentKey} state → ${state}${reason ? ` (${reason})` : ""}`, "info");
+          log(
+            `Agent ${agentKey} state → ${state}${reason ? ` (${reason})` : ""}`,
+            "info",
+          );
         });
 
         client.events.on("agent.state.forced", (params) => {
           const payload = params.data || params;
-          log(`Agent ${payload.target_username || payload.id} state forced → ${payload.new_state} by ${payload.forced_by}`, "warn");
+          log(
+            `Agent ${payload.target_username || payload.id} state forced → ${payload.new_state} by ${payload.forced_by}`,
+            "warn",
+          );
         });
 
         client.events.on("agent.created", (params) => {
           const payload = params.data || params;
-          log(`Agent created: ${payload.display_name || payload.username} (${payload.id})`, "info");
+          log(
+            `Agent created: ${payload.display_name || payload.username} (${payload.id})`,
+            "info",
+          );
         });
 
         client.events.on("agent.updated", (params) => {
           const payload = params.data || params;
-          log(`Agent updated: ${payload.display_name || payload.username} (${payload.id})`, "info");
+          log(
+            `Agent updated: ${payload.display_name || payload.username} (${payload.id})`,
+            "info",
+          );
         });
 
         client.events.on("agent.deleted", (params) => {
@@ -785,7 +808,10 @@
         if (!token || !baseUrl) return;
 
         try {
-          if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+          if (
+            !baseUrl.startsWith("http://") &&
+            !baseUrl.startsWith("https://")
+          ) {
             baseUrl = `https://${baseUrl}`;
           }
           const response = await fetch(`${baseUrl}/api/v1/agents?limit=100`, {
@@ -817,7 +843,10 @@
             '<span class="text-muted">No agents online</span>';
           return;
         }
-        const currentUser = client && client.getSessionInfo() ? client.getSessionInfo().username : "";
+        const currentUser =
+          client && client.getSessionInfo()
+            ? client.getSessionInfo().username
+            : "";
         container.innerHTML = Array.from(agents.entries())
           .map(([name, state]) => {
             let dotClass = "online";
@@ -826,9 +855,10 @@
             } else if (state === "busy") {
               dotClass = "error";
             }
-            const callBtnHtml = name !== currentUser
-              ? `<button class="agent-call-btn" onclick="callAgent('${name}')">📞</button>`
-              : "";
+            const callBtnHtml =
+              name !== currentUser
+                ? `<button class="agent-call-btn" onclick="callAgent('${name}')">📞</button>`
+                : "";
             return `<span class="agent-tag" title="State: ${state}"><span class="status-dot ${dotClass}" style="width:6px;height:6px;"></span>${name}${callBtnHtml}</span>`;
           })
           .join("");
@@ -894,7 +924,7 @@
       }
 
       // Log SDK load
-      log("Firetell SDK loaded — ready to connect", "success");
+      log("Firetell SDK loaded v — ready to connect", "success");
     </script>
   </body>
 </html>

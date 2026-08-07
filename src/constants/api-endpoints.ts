@@ -10,7 +10,7 @@ export const API_ENDPOINTS = {
   /** REST Make Call Endpoint */
   MAKE_CALL: "/api/v1/call-center/calls",
   /** SSE Realtime Events Stream Endpoint */
-  EVENT_STREAM: "/api/v1/call-center/events/stream",
+  EVENT_STREAM: "/stream",
   /** Supervision Endpoints */
   SUPERVISION: (callId: string, mode: string) => `/api/v1/call-center/calls/${callId}/${mode}`,
   /** Call Transfer Endpoint */
