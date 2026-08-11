@@ -183,7 +183,12 @@ export class Call extends SimpleEventEmitter {
         this.destroy(false);
         break;
       }
-      case "call.sdp":
+      case "call.sdp": {
+        if (data?.sdp) {
+          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        }
+        break;
+      }
       case "call.state": {
         if (data?.sdp) {
           void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
