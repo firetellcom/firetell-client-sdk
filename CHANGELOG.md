@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2026-08-11
+
+### Fixed
+- **SDP-only State Update Pollution**: Separated the handlers for `call.sdp` and `call.state` WebSocket events. Now, receiving early media or progress SDP updates (`call.sdp` / `183 Session Progress`) will only set the remote WebRTC description without incorrectly emitting a state transition event containing `state: undefined` to the client application.
+
 ## [1.0.7] - 2026-08-07
 
 ### Changed
