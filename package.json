@@ -21,7 +21,7 @@
     "build": "tsup",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
-    "publish": "npm run build && npm publish --access=public --registry=https://registry.npmjs.org/"
+    "release": "npm run build && npm publish --access=public --registry=https://registry.npmjs.org/"
   },
   "files": [
     "dist",
