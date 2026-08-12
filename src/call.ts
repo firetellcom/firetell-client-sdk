@@ -4,6 +4,7 @@ import { ECallState } from "./enums/call-state.enum";
 import { CallOptions } from "./interfaces/call-options.interface";
 import { SimpleEventEmitter } from "./simple-event-emitter";
 import { FiretellClient } from "./firetell-client";
+import { DEFAULT_ICE_SERVERS } from "./constants";
 
 /** Event-based Native WebSocket message shape */
 export interface IWsEventMessage {
@@ -43,9 +44,9 @@ export class Call extends SimpleEventEmitter {
     this.isTransfer = options.isTransfer || false;
     this.isInternal = options.isInternal || false;
     this.peerConnection = new RTCPeerConnection({
-      iceServers: this.client.iceServers.length
+      iceServers: this.client?.iceServers?.length
         ? this.client.iceServers
-        : [{ urls: "stun:stun.l.google.com:19302" }],
+        : DEFAULT_ICE_SERVERS,
     });
   }
 
@@ -112,6 +113,41 @@ export class Call extends SimpleEventEmitter {
   }
 
   /**
+   * Helper to extract a valid RTCSessionDescriptionInit from WS event data.
+   * Handles object formats { type, sdp }, nested { sdp: { type, sdp } }, or raw SDP strings.
+   */
+  private extractSdpInit(data: unknown): RTCSessionDescriptionInit | null {
+    if (!data || typeof data !== "object") return null;
+    const obj = data as Record<string, unknown>;
+
+    if (obj.sdp && typeof obj.sdp === "object") {
+      const sdpObj = obj.sdp as Record<string, unknown>;
+      if (typeof sdpObj.sdp === "string") {
+        return {
+          type: (sdpObj.type as RTCSessionDescriptionInit["type"]) || "answer",
+          sdp: sdpObj.sdp,
+        };
+      }
+    }
+
+    if (typeof obj.sdp === "string") {
+      return {
+        type: (obj.type as RTCSessionDescriptionInit["type"]) || "answer",
+        sdp: obj.sdp,
+      };
+    }
+
+    if (typeof obj.type === "string" && typeof obj.sdp === "string") {
+      return {
+        type: obj.type as RTCSessionDescriptionInit["type"],
+        sdp: obj.sdp,
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * Process incoming WebSocket signaling messages for this call
    */
   private handleWsMessage(msg: IWsEventMessage, onConnectSuccess: () => void): void {
@@ -132,8 +168,9 @@ export class Call extends SimpleEventEmitter {
       }
       case "call.offer": {
         if (data) {
-          if (data.sdp) {
-            this.remoteDescription = data.sdp as RTCSessionDescriptionInit;
+          const sdpInit = this.extractSdpInit(data);
+          if (sdpInit) {
+            this.remoteDescription = sdpInit;
             void this.setRemoteDescription(this.remoteDescription);
           }
           if (data.from) this.from = (data.from as { number?: string })?.number || String(data.from);
@@ -148,8 +185,9 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "call.answered": {
-        if (data?.sdp) {
-          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        const sdpInit = this.extractSdpInit(data);
+        if (sdpInit) {
+          void this.setRemoteDescription(sdpInit);
         }
         this.state = ECallState.ACTIVE;
         this.active = true;
@@ -157,16 +195,18 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "call.held": {
-        if (data?.sdp) {
-          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        const sdpInit = this.extractSdpInit(data);
+        if (sdpInit) {
+          void this.setRemoteDescription(sdpInit);
         }
         this.state = ECallState.ONHOLD;
         this.emit(ECallEventName.STATE, { state: ECallState.ONHOLD, data });
         break;
       }
       case "call.unheld": {
-        if (data?.sdp) {
-          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        const sdpInit = this.extractSdpInit(data);
+        if (sdpInit) {
+          void this.setRemoteDescription(sdpInit);
         }
         this.state = ECallState.ACTIVE;
         this.emit(ECallEventName.STATE, { state: ECallState.ACTIVE, data });
@@ -184,14 +224,16 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "call.sdp": {
-        if (data?.sdp) {
-          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        const sdpInit = this.extractSdpInit(data);
+        if (sdpInit) {
+          void this.setRemoteDescription(sdpInit);
         }
         break;
       }
       case "call.state": {
-        if (data?.sdp) {
-          void this.setRemoteDescription(data.sdp as RTCSessionDescriptionInit);
+        const sdpInit = this.extractSdpInit(data);
+        if (sdpInit) {
+          void this.setRemoteDescription(sdpInit);
         }
         if (data?.state) {
           const nextState = (data.state as ECallState) || ECallState.RINGING;
@@ -386,6 +428,7 @@ export class Call extends SimpleEventEmitter {
     const sdp = await this.getSDPFull();
     this.sendWsEvent("call.hold", { call_id: this.callId, sdp: sdp.sdp });
     this.state = ECallState.ONHOLD;
+    this.emit(ECallEventName.STATE, { state: ECallState.ONHOLD });
   }
 
   /**
@@ -405,8 +448,9 @@ export class Call extends SimpleEventEmitter {
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
     const sdp = await this.getSDPFull();
-    this.sendWsEvent("call.hold", { call_id: this.callId, sdp: sdp.sdp });
-    this.state = ECallState.ANSWERED;
+    this.sendWsEvent("call.unhold", { call_id: this.callId, sdp: sdp.sdp });
+    this.state = ECallState.ACTIVE;
+    this.emit(ECallEventName.STATE, { state: ECallState.ACTIVE });
   }
 
   /**
@@ -496,9 +540,9 @@ export class Call extends SimpleEventEmitter {
     try {
       this.cleanupPeerConnection();
       this.peerConnection = new RTCPeerConnection({
-        iceServers: this.client?.iceServers.length
+        iceServers: this.client?.iceServers?.length
           ? this.client.iceServers
-          : [{ urls: "stun:stun.l.google.com:19302" }],
+          : DEFAULT_ICE_SERVERS,
       });
 
       this.peerConnection.oniceconnectionstatechange = () => {
