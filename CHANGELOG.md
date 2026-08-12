@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-12
+
+### Fixed
+- **DTLS SSL Role Preservation on Renegotiation**: Fixed `Failed to set SSL role for the transport` error during caller-initiated hold (`call.onhold()`). Preserves established DTLS `a=setup` role (`active` / `passive`) in `setRemoteDescription()` across renegotiation answers from FreeSWITCH.
+- **Incoming Call Accept Error Safety**: Added `try...catch` block around `Call.accept()` to guarantee proper media cleanup and `ECallState.ERROR` state emission if microphone access or WebRTC answer creation fails.
+
+## [1.0.9] - 2026-08-12
+
+### Fixed
+- **Call Unhold Event Signaling**: Fixed WS event name emitted during `Call.unhold()` from `"call.hold"` to `"call.unhold"`. Updated post-unhold state transition to `ECallState.ACTIVE`.
+- **WebRTC Remote SDP Parsing**: Added `extractSdpInit()` helper in `Call.ts` to safely parse SDP payloads received in WebSocket messages (`call.held`, `call.unheld`, `call.offer`, `call.answered`, `call.sdp`, `call.state`). Prevents `TypeError` when receiving raw SDP string from server, ensuring remote WebRTC audio media stream is properly renegotiated and unmuted on unhold.
+- **Immediate State Event Emission**: Added immediate local `ECallEventName.STATE` event emission upon invoking `Call.onhold()` and `Call.unhold()` for responsive UI state updates.
+- **ICE Server Fallback**: Created `DEFAULT_ICE_SERVERS` constant (Google STUN + Cloudflare STUN 3478) and configured it as fallback for both `FiretellClient` and `Call.setupWebrtcMedia()`.
+
 ## [1.0.8] - 2026-08-11
 
 ### Fixed

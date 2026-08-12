@@ -6,6 +6,7 @@ import { EClientEventName } from "./enums/client-event-name.enum";
 import { EStorageKey } from "./enums/storage-key.enum";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
+import { DEFAULT_ICE_SERVERS } from "./constants/ice-servers";
 
 declare const __SDK_VERSION__: string;
 const SDK_VERSION = typeof __SDK_VERSION__ !== "undefined" ? __SDK_VERSION__ : "1.0.1";
@@ -62,7 +63,7 @@ export class FiretellClient {
   private jwt: string = "";
   private jwtPayload: IJwtPayload | null = null;
   private wsServers: string[] = [];
-  public iceServers: RTCIceServer[] = [];
+  public iceServers: RTCIceServer[] = DEFAULT_ICE_SERVERS;
   private session: ISession | null = null;
   private isReconnecting: boolean = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -138,8 +139,8 @@ export class FiretellClient {
         ws_servers: string[];
         ice_servers: RTCIceServer[];
       };
-      this.wsServers = data.ws_servers;
-      this.iceServers = data.ice_servers;
+      this.wsServers = data.ws_servers || [];
+      this.iceServers = data.ice_servers && data.ice_servers.length ? data.ice_servers : DEFAULT_ICE_SERVERS;
 
       // Start SSE Realtime Events stream for background presence & workspace updates
       this._initEventStream();

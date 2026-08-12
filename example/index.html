@@ -779,6 +779,7 @@
       }
 
       function startTimer() {
+        if (callTimerInterval) return;
         callStartTime = Date.now();
         callTimerInterval = setInterval(() => {
           const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
@@ -793,6 +794,7 @@
           clearInterval(callTimerInterval);
           callTimerInterval = null;
         }
+        callStartTime = null;
         document.getElementById("callTimer").textContent = "00:00";
       }
 
