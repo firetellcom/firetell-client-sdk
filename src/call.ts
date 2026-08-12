@@ -612,7 +612,7 @@ export class Call extends SimpleEventEmitter {
 
   /**
    * Wait for ICE candidates to be gathered and return full SDP.
-   * Media servers (FreeSWITCH) do not support Trickle ICE.
+   * Firetell media servers do not support Trickle ICE.
    */
   private async getSDPFull(): Promise<RTCSessionDescription> {
     return new Promise((resolve, reject) => {
