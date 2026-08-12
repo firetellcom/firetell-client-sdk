@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-08-12
+
+### Fixed
+- **Inbound Call DTLS Setup Role Validation**: Fixed `Answerer must use either active or passive value for setup attribute` error during callee-initiated unhold (`Call.unhold()`). Excluded `a=setup:actpass` from `currentRemoteSetupRole` recording so offer-stage `actpass` attributes are never inserted into WebRTC renegotiation answer descriptions.
+- **Optimized Full ICE Gathering**: Fixed 10s ICE gathering timeout during `Call.accept()` / `Call.start()`. Added `onicegatheringstatechange` listener, reduced hard safety timeout to 6s, and implemented a 3s fallback timer that strictly verifies the presence of STUN Public IP (`typ srflx`) or Relay (`typ relay`) candidates in `localDescription` before early resolution.
+
 ## [1.1.0] - 2026-08-12
 
 ### Fixed
