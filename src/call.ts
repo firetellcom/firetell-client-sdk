@@ -539,9 +539,14 @@ export class Call extends SimpleEventEmitter {
 
       if (setupMatch) {
         if (!this.currentRemoteSetupRole) {
-          // Record initial established DTLS role from server
-          this.currentRemoteSetupRole = setupMatch[1];
-        } else if (setupMatch[1] !== this.currentRemoteSetupRole) {
+          // Record initial established DTLS role from server (must be 'active' or 'passive')
+          if (setupMatch[1] === "active" || setupMatch[1] === "passive") {
+            this.currentRemoteSetupRole = setupMatch[1];
+          }
+        } else if (
+          (setupMatch[1] === "active" || setupMatch[1] === "passive") &&
+          setupMatch[1] !== this.currentRemoteSetupRole
+        ) {
           // Preserve established DTLS role during renegotiation (hold/unhold) to prevent 'Failed to set SSL role for the transport'
           sdpText = sdpText.replace(
             /a=setup:(active|passive|actpass)/g,
@@ -606,36 +611,73 @@ export class Call extends SimpleEventEmitter {
   }
 
   /**
-   * Wait for all ICE candidates to be gathered and return the full SDP.
-   * Media servers does not support Trickle ICE.
+   * Wait for ICE candidates to be gathered and return full SDP.
+   * Firetell media servers do not support Trickle ICE.
    */
   private async getSDPFull(): Promise<RTCSessionDescription> {
     return new Promise((resolve, reject) => {
-      // Check if ICE gathering already complete
-      if (this.peerConnection.iceGatheringState === "complete") {
-        if (this.peerConnection.localDescription) {
-          resolve(this.peerConnection.localDescription);
+      const pc = this.peerConnection;
+
+      let isFinished = false;
+      let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+      let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const finish = () => {
+        if (isFinished) return;
+        isFinished = true;
+        if (pc) {
+          pc.onicecandidate = null;
+          pc.onicegatheringstatechange = null;
+        }
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+
+        if (pc && pc.localDescription) {
+          resolve(pc.localDescription);
         } else {
           reject(new Error("No local description after ICE gathering"));
         }
+      };
+
+      // Check if ICE gathering is already complete
+      if (pc.iceGatheringState === "complete") {
+        finish();
         return;
       }
 
-      const timeout = setTimeout(() => {
-        this.peerConnection.onicecandidate = null;
-        reject(new Error("ICE gathering timed out after 10s"));
-      }, 10000);
+      // Hard safety timeout of 6 seconds
+      timeoutTimer = setTimeout(() => {
+        if (pc.localDescription) {
+          finish();
+        } else {
+          if (pc) {
+            pc.onicecandidate = null;
+            pc.onicegatheringstatechange = null;
+          }
+          reject(new Error("ICE gathering timed out after 6s"));
+        }
+      }, 6000);
 
-      this.peerConnection.onicecandidate = (event) => {
+      // Fallback: If 3 seconds pass and STUN Public IP candidate (typ srflx) or Relay (typ relay) is present
+      fallbackTimer = setTimeout(() => {
+        if (
+          pc.localDescription &&
+          (/typ srflx/.test(pc.localDescription.sdp) || /typ relay/.test(pc.localDescription.sdp))
+        ) {
+          finish();
+        }
+      }, 3000);
+
+      pc.onicecandidate = (event) => {
         if (!event.candidate) {
           // ICE gathering complete (null candidate signals end)
-          clearTimeout(timeout);
-          this.peerConnection.onicecandidate = null;
-          if (this.peerConnection.localDescription) {
-            resolve(this.peerConnection.localDescription);
-          } else {
-            reject(new Error("No local description after ICE gathering"));
-          }
+          finish();
+        }
+      };
+
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === "complete") {
+          finish();
         }
       };
     });
