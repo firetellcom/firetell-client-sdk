@@ -30,6 +30,7 @@ export class Call extends SimpleEventEmitter {
   public isTransfer: boolean;
   public isInternal: boolean;
   private _destroying: boolean = false;
+  private currentRemoteSetupRole: string | null = null;
 
   constructor(client: FiretellClient, options: CallOptions) {
     super();
@@ -298,18 +299,25 @@ export class Call extends SimpleEventEmitter {
   public async accept(): Promise<void> {
     if (!this.callId) throw new Error("callId is missing");
     if (!this.remoteDescription) throw new Error("remoteDescription is missing");
-    await this.setupWebrtcMedia({ video: this.isVideo, audio: true });
-    await this.setRemoteDescription(this.remoteDescription);
-    const answer = await this.peerConnection.createAnswer();
-    await this.peerConnection.setLocalDescription(answer);
-    const sdp = await this.getSDPFull();
+    try {
+      await this.setupWebrtcMedia({ video: this.isVideo, audio: true });
+      await this.setRemoteDescription(this.remoteDescription);
+      const answer = await this.peerConnection.createAnswer();
+      await this.peerConnection.setLocalDescription(answer);
+      const sdp = await this.getSDPFull();
 
-    this.sendWsEvent("call.answer", {
-      call_id: this.callId,
-      sdp: sdp.sdp,
-    });
-    this.active = true;
-    this.state = ECallState.ANSWERED;
+      this.sendWsEvent("call.answer", {
+        call_id: this.callId,
+        sdp: sdp.sdp,
+      });
+      this.active = true;
+      this.state = ECallState.ANSWERED;
+    } catch (error: unknown) {
+      this.active = false;
+      this.state = ECallState.ERROR;
+      this.destroy(false);
+      throw error instanceof Error ? error : new Error(String(error));
+    }
   }
 
   /**
@@ -523,8 +531,32 @@ export class Call extends SimpleEventEmitter {
       if (sdp.type === "answer" && this.peerConnection.signalingState === "stable") {
         return;
       }
+
+      let sdpText = sdp.sdp || "";
+
+      // Extract DTLS setup role (active/passive/actpass) from SDP
+      const setupMatch = sdpText.match(/a=setup:(active|passive|actpass)/);
+
+      if (setupMatch) {
+        if (!this.currentRemoteSetupRole) {
+          // Record initial established DTLS role from server
+          this.currentRemoteSetupRole = setupMatch[1];
+        } else if (setupMatch[1] !== this.currentRemoteSetupRole) {
+          // Preserve established DTLS role during renegotiation (hold/unhold) to prevent 'Failed to set SSL role for the transport'
+          sdpText = sdpText.replace(
+            /a=setup:(active|passive|actpass)/g,
+            `a=setup:${this.currentRemoteSetupRole}`
+          );
+        }
+      }
+
+      const finalSdp: RTCSessionDescriptionInit = {
+        type: sdp.type,
+        sdp: sdpText,
+      };
+
       await this.peerConnection.setRemoteDescription(
-        new RTCSessionDescription(sdp)
+        new RTCSessionDescription(finalSdp)
       );
     } catch (error) {
       console.error("setRemoteDescription:", error);
@@ -614,6 +646,7 @@ export class Call extends SimpleEventEmitter {
    */
   private cleanupPeerConnection(): void {
     this.isMuted = false;
+    this.currentRemoteSetupRole = null;
     if (this.peerConnection) {
       this.peerConnection.onicecandidate = null;
       this.peerConnection.oniceconnectionstatechange = null;

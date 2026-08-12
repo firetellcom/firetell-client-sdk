@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-12
+
+### Fixed
+- **DTLS SSL Role Preservation on Renegotiation**: Fixed `Failed to set SSL role for the transport` error during caller-initiated hold (`call.onhold()`). Preserves established DTLS `a=setup` role (`active` / `passive`) in `setRemoteDescription()` across renegotiation answers from FreeSWITCH.
+- **Incoming Call Accept Error Safety**: Added `try...catch` block around `Call.accept()` to guarantee proper media cleanup and `ECallState.ERROR` state emission if microphone access or WebRTC answer creation fails.
+
 ## [1.0.9] - 2026-08-12
 
 ### Fixed
