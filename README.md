@@ -268,14 +268,47 @@ await client.setPresence("ready");
 
 ---
 
+## 📊 Real-Time Call Lifecycle Events
+
+In addition to WebRTC signaling, the SDK emits real-time call lifecycle state events over the persistent SSE stream for live dashboard monitoring, active call logs, and call telemetry:
+
+```typescript
+// 1. New Call Session Created in Workspace
+client.events.on("call.created", ({ data }) => {
+  console.log("Call Created:", data.call_id, data.direction, data.number);
+});
+
+// 2. Call Ringing / Started
+client.events.on("call.started", ({ data }) => {
+  console.log("Call Ringing:", data.call_id, "From:", data.from?.number, "To:", data.to?.number);
+});
+
+// 3. Call Answered & Bridge Established
+client.events.on("call.answered", ({ data }) => {
+  console.log("Call Answered:", data.call_id, "Answered at:", data.answer_time);
+});
+
+// 4. Call Ended & Final Metrics Available
+client.events.on("call.ended", ({ data }) => {
+  console.log("Call Ended:", data.call_id, "Duration:", data.duration, "Cause:", data.hangup_cause);
+});
+```
+
+---
+
 ## 📖 API & Event Reference
 
 ### `EClientEventName` (Client Events)
 
 | Event Name | Payload Type | Description |
 | :--- | :--- | :--- |
-| `call.ring` | `ICallRingParams` | Triggered instantly when an incoming call starts ringing |
+| `call.ring` | `ICallRingParams` | Triggered instantly when an incoming call starts ringing (popup alert) |
 | `call.offer` | `Call` | Triggered when the WebRTC call object is ready to answer |
+| `call.created` | `{ event, workspace_id, data, timestamp }` | Real-time event when a new call is initialized |
+| `call.started` | `{ event, workspace_id, data, timestamp }` | Real-time event when a call begins ringing/progressing |
+| `call.answered` | `{ event, workspace_id, data, timestamp }` | Real-time event when a call is answered |
+| `call.ended` | `{ event, workspace_id, data, timestamp }` | Real-time event when a call finishes (includes duration, hangup_cause, cost) |
+| `call.canceled` | `{ event, workspace_id, data, timestamp }` | Triggered when ringing is canceled (call answered elsewhere or timed out) |
 | `connection.state` | `'connected' \| 'connecting' \| 'disconnected'` | Real-time connection status updates (handles background drops and reconnects without logging out) |
 | `agent.state` | `{ username, state }` | Real-time presence updates (`online`, `available`, `incall`, `busy`, `offline`) |
 | `agent.state.forced` | `{ target_username, new_state, forced_by, reason }` | Fired when a supervisor forces an agent's state to `offline` |
