@@ -4,6 +4,8 @@ export enum EClientEventName {
     CALL_RING = "call.ring",
     CALL_OFFER = "call.offer",
     CALL_OFFERED = "call.offered",
+    CALL_ENDED = "call.ended",
+    CALL_CANCELED = "call.canceled",
     CALL_HELD = "call.held",
     CALL_UNHELD = "call.unheld",
     CALL_TRANSFERRED = "call.transferred",

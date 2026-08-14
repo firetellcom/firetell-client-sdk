@@ -2,6 +2,7 @@ import { SimpleEventEmitter } from "./simple-event-emitter";
 import { Call } from "./call";
 import { ISession } from "./interfaces/session.interface";
 import { ECallState } from "./enums/call-state.enum";
+import { ECallEventName } from "./enums/call-event-name.enum";
 import { EClientEventName } from "./enums/client-event-name.enum";
 import { EStorageKey } from "./enums/storage-key.enum";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
@@ -224,6 +225,14 @@ export class FiretellClient {
         }
       };
 
+      /**
+       * Inbound Call Notification (SSE):
+       * In Firetell's architecture, WebSocket signaling connections are created on-demand per call (not kept alive while idle).
+       * When an incoming call arrives, the backend dispatches a 'call.ring' event over the persistent SSE event stream
+       * containing a short-lived call_token and the target signaling WebSocket URL.
+       * The SDK emits CALL_RING to trigger incoming call UI/ringtones, and automatically connects the dedicated
+       * per-call WebSocket via _createCallSession().
+       */
       this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
         try {
           const data = (typeof e.data === "string" ? JSON.parse(e.data) : e.data) as ICallRingParams;
@@ -233,7 +242,7 @@ export class FiretellClient {
               data.ws_url ||
               this.wsServers[0] ||
               `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
-            this.createCallSession(data.call_token, wsUrl, data.call_id, {
+            this._createCallSession(data.call_token, wsUrl, data.call_id, {
               to: data.to?.number || "",
               from: data.from?.number || "",
               from_name: data.from?.name || "",
@@ -244,6 +253,69 @@ export class FiretellClient {
           }
         } catch (err) {
           console.error("Error parsing call.ring event:", err);
+        }
+      });
+
+      /**
+       * Call Canceled / Ringing Revocation (SSE):
+       * Why is this handled over SSE in addition to WebSocket?
+       * 1. Team / Ring-All Distribution: When a call rings multiple agents, as soon as one agent answers
+       *    or when the dialplan leg times out, the server broadcasts 'call.canceled' over SSE to all other agents.
+       * 2. Race Condition Prevention: The remaining agents might still be opening their per-call WebSocket or
+       *    have not finished WebSocket handshaking. Handling 'call.canceled' over SSE guarantees that the ringing
+       *    modal and ringtone are dismissed immediately on all agents' screens without relying on WebSocket state.
+       */
+      this.eventSource.addEventListener("call.canceled", (e: MessageEvent) => {
+        try {
+          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+          const callId = data?.call_id;
+          if (callId) {
+            const call = this.activeCalls.get(callId);
+            if (call) {
+              call.emit(ECallEventName.STATE, {
+                state: ECallState.ENDED,
+                reason: data?.reason || "Canceled",
+                data,
+              });
+              call.destroy(false);
+            }
+            this.activeCalls.delete(callId);
+          }
+          this.events.emit(EClientEventName.CALL_CANCELED, data);
+          this.events.emit("call.canceled", data);
+          this.events.emit("call.ended", data);
+        } catch (err) {
+          console.error("Error parsing call.canceled event:", err);
+        }
+      });
+
+      /**
+       * Call Ended / Early Termination (SSE):
+       * Why is this handled over SSE in addition to WebSocket?
+       * If the caller hangs up before the agent answers (or while the per-call WebSocket is connecting),
+       * the server broadcasts 'call.ended' over SSE. This guarantees that the incoming call notification
+       * is closed immediately, preventing the ringing modal from lingering on screen indefinitely.
+       */
+      this.eventSource.addEventListener("call.ended", (e: MessageEvent) => {
+        try {
+          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+          const callId = data?.call_id;
+          if (callId) {
+            const call = this.activeCalls.get(callId);
+            if (call) {
+              call.emit(ECallEventName.STATE, {
+                state: ECallState.ENDED,
+                reason: data?.reason || "Call Ended",
+                data,
+              });
+              call.destroy(false);
+            }
+            this.activeCalls.delete(callId);
+          }
+          this.events.emit(EClientEventName.CALL_ENDED, data);
+          this.events.emit("call.ended", data);
+        } catch (err) {
+          console.error("Error parsing call.ended event:", err);
         }
       });
 
@@ -348,7 +420,7 @@ export class FiretellClient {
   /**
    * Helper to create a Call instance and connect its dedicated per-call WebSocket
    */
-  public async createCallSession(
+  private async _createCallSession(
     callToken: string,
     wsUrl: string,
     callId: string,
