@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-08-14
+
+### Added
+- **Real-Time Call Lifecycle Event Enums**: Added `EClientEventName.CALL_CREATED` (`"call.created"`), `EClientEventName.CALL_STARTED` (`"call.started"`), and `EClientEventName.CALL_ANSWERED` (`"call.answered"`) to `client-event-name.enum.ts`.
+- **SSE Stream Forwarding**: Added EventSource forwarding for `call.created`, `call.started`, and `call.answered` events in `FiretellClient._initEventStream()`.
+- **Active Call State Synchronization**: Added automatic transition of active calls to `ECallState.ACTIVE` / `ANSWERED` when receiving `call.answered` over the SSE stream.
+
+### Changed & Improved
+- **Wrapped Data Payload Compatibility**: Enhanced `call.ended`, `call.canceled`, and `call.answered` SSE listeners in `FiretellClient` to seamlessly extract `call_id` and call details from both nested `{ event, workspace_id, data: { call_id, ... }, timestamp }` payloads and direct `{ call_id }` payloads.
+
 ## [1.1.2] - 2026-08-14
 
 ### Added

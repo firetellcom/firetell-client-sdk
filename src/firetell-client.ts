@@ -183,6 +183,8 @@ export class FiretellClient {
       });
 
       const forwardEvents = [
+        { name: "call.created", enumName: EClientEventName.CALL_CREATED },
+        { name: "call.started", enumName: EClientEventName.CALL_STARTED },
         { name: "agent.state", enumName: EClientEventName.AGENT_STATE },
         { name: "agent.state.forced", enumName: EClientEventName.AGENT_STATE_FORCED },
         { name: "agent.created", enumName: EClientEventName.AGENT_CREATED },
@@ -198,10 +200,49 @@ export class FiretellClient {
         { name: "team.unassigned", enumName: EClientEventName.TEAM_UNASSIGNED },
       ];
 
+      const seenEventSignatures = new Map<string, number>();
+
+      const isDuplicateEvent = (payload: any): boolean => {
+        if (!payload || typeof payload !== "object") return false;
+        const eventName = payload.event || "";
+        const callId =
+          payload.data?.call_id ||
+          payload.data?.id ||
+          payload.call_id ||
+          payload.id ||
+          "";
+        const status = payload.data?.status || payload.status || "";
+        const timestamp = payload.timestamp || payload.data?.timestamp || "";
+
+        let sig = "";
+        if (eventName && callId) {
+          sig = `${eventName}:${callId}:${status || timestamp}`;
+        } else if (payload.id || payload.event_id) {
+          sig = `${eventName}:${payload.id || payload.event_id}`;
+        } else {
+          return false;
+        }
+
+        const now = Date.now();
+        if (seenEventSignatures.size > 100) {
+          for (const [k, ts] of seenEventSignatures.entries()) {
+            if (now - ts > 5000) seenEventSignatures.delete(k);
+          }
+        }
+
+        const lastSeen = seenEventSignatures.get(sig);
+        if (lastSeen && now - lastSeen < 3000) {
+          return true; // Duplicate event
+        }
+        seenEventSignatures.set(sig, now);
+        return false;
+      };
+
       forwardEvents.forEach(({ name, enumName }) => {
         this.eventSource?.addEventListener(name, (e: MessageEvent) => {
           try {
             const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+            if (isDuplicateEvent(data)) return;
             this.events.emit(enumName, data);
             if (name !== enumName) {
               this.events.emit(name, data);
@@ -236,6 +277,7 @@ export class FiretellClient {
       this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
         try {
           const data = (typeof e.data === "string" ? JSON.parse(e.data) : e.data) as ICallRingParams;
+          if (isDuplicateEvent(data)) return;
           this.events.emit(EClientEventName.CALL_RING, data);
           if (data.call_token) {
             const wsUrl =
@@ -257,6 +299,32 @@ export class FiretellClient {
       });
 
       /**
+       * Call Answered (SSE):
+       * Server broadcasts 'call.answered' when call is picked up.
+       */
+      this.eventSource.addEventListener("call.answered", (e: MessageEvent) => {
+        try {
+          const payload = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+          if (isDuplicateEvent(payload)) return;
+          const callId = payload?.data?.call_id || payload?.data?.id || payload?.call_id || payload?.id;
+          if (callId) {
+            const call = this.activeCalls.get(callId);
+            if (call && call.callState !== ECallState.ACTIVE) {
+              call.emit(ECallEventName.STATE, {
+                state: ECallState.ACTIVE,
+                reason: "Answered",
+                data: payload?.data || payload,
+              });
+            }
+          }
+          this.events.emit(EClientEventName.CALL_ANSWERED, payload);
+          this.events.emit("call.answered", payload);
+        } catch (err) {
+          console.error("Error parsing call.answered event:", err);
+        }
+      });
+
+      /**
        * Call Canceled / Ringing Revocation (SSE):
        * Why is this handled over SSE in addition to WebSocket?
        * 1. Team / Ring-All Distribution: When a call rings multiple agents, as soon as one agent answers
@@ -268,14 +336,15 @@ export class FiretellClient {
       this.eventSource.addEventListener("call.canceled", (e: MessageEvent) => {
         try {
           const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-          const callId = data?.call_id;
+          if (isDuplicateEvent(data)) return;
+          const callId = data?.data?.call_id || data?.data?.id || data?.call_id || data?.id;
           if (callId) {
             const call = this.activeCalls.get(callId);
             if (call) {
               call.emit(ECallEventName.STATE, {
                 state: ECallState.ENDED,
-                reason: data?.reason || "Canceled",
-                data,
+                reason: data?.data?.hangup_cause || data?.reason || "Canceled",
+                data: data?.data || data,
               });
               call.destroy(false);
             }
@@ -299,14 +368,15 @@ export class FiretellClient {
       this.eventSource.addEventListener("call.ended", (e: MessageEvent) => {
         try {
           const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-          const callId = data?.call_id;
+          if (isDuplicateEvent(data)) return;
+          const callId = data?.data?.call_id || data?.data?.id || data?.call_id || data?.id;
           if (callId) {
             const call = this.activeCalls.get(callId);
             if (call) {
               call.emit(ECallEventName.STATE, {
                 state: ECallState.ENDED,
-                reason: data?.reason || "Call Ended",
-                data,
+                reason: data?.data?.hangup_cause || data?.reason || "Call Ended",
+                data: data?.data || data,
               });
               call.destroy(false);
             }
