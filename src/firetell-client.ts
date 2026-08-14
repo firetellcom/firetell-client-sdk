@@ -284,7 +284,7 @@ export class FiretellClient {
               data.ws_url ||
               this.wsServers[0] ||
               `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
-            this._createCallSession(data.call_token, wsUrl, data.call_id, {
+            this.createCallSession(data.call_token, wsUrl, data.call_id, {
               to: data.to?.number || "",
               from: data.from?.number || "",
               from_name: data.from?.name || "",
@@ -490,7 +490,7 @@ export class FiretellClient {
   /**
    * Helper to create a Call instance and connect its dedicated per-call WebSocket
    */
-  private async _createCallSession(
+  public async createCallSession(
     callToken: string,
     wsUrl: string,
     callId: string,
