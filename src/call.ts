@@ -217,10 +217,41 @@ export class Call extends SimpleEventEmitter {
       case "call.rejected":
       case "call.canceled": {
         this.state = ECallState.ENDED;
+        const reason = (data?.reason as string) || event;
         this.emit(ECallEventName.STATE, {
           state: ECallState.ENDED,
-          reason: (data?.reason as string) || event,
+          reason,
+          data,
         });
+        if (this.client) {
+          const clientEvent =
+            event === "call.canceled"
+              ? EClientEventName.CALL_CANCELED
+              : EClientEventName.CALL_ENDED;
+          this.client.events.emit(clientEvent, {
+            call: this,
+            call_id: this.callId,
+            event,
+            reason,
+            data,
+          });
+          this.client.events.emit("call.ended", {
+            call: this,
+            call_id: this.callId,
+            event,
+            reason,
+            data,
+          });
+          if (event === "call.canceled") {
+            this.client.events.emit("call.canceled", {
+              call: this,
+              call_id: this.callId,
+              event,
+              reason,
+              data,
+            });
+          }
+        }
         this.destroy(false);
         break;
       }

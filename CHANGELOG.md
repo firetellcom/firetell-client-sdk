@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-08-14
+
+### Added
+- **Client Event Enum Values (`CALL_ENDED` & `CALL_CANCELED`)**: Added `EClientEventName.CALL_ENDED` (`"call.ended"`) and `EClientEventName.CALL_CANCELED` (`"call.canceled"`) to `client-event-name.enum.ts` for unified application-level call lifecycle subscription.
+- **SSE Stream Listeners for Early Call Cancellation**: Added persistent `call.canceled` and `call.ended` EventSource listeners in `FiretellClient._initEventStream()`. Automatically cleans up `Call` instances and dismisses incoming call ringing UI modals when calls are answered by another agent or canceled before WebSocket connection completion.
+- **Architectural Documentation**: Added detailed JSDoc comments in `FiretellClient` explaining the dual-layer signaling architecture between persistent background SSE streams and on-demand per-call WebSocket sessions.
+
+### Fixed
+- **Client-Level Event Notification on Early Termination**: Fixed hanging incoming call ringing UI when server sends `call.ended` or `call.canceled` immediately upon connection. `Call.handleWsMessage()` now dispatches `EClientEventName.CALL_ENDED` and `EClientEventName.CALL_CANCELED` directly to `client.events`, ensuring UI components can dismiss incoming call notifications even if `call.offer` was never dispatched.
+
 ## [1.1.1] - 2026-08-12
 
 ### Fixed
