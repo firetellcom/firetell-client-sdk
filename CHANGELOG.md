@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed & Improved
 
+- **Replaced `superviseCall` Public API**: Made `_superviseCall()` internal/private in favor of the unified `startSupervision(callId, mode)` public API, encapsulating the entire REST token exchange and WebRTC audio connection in one step.
 - **Flexible `CallOptions` in `Call` Constructor**: Made `to` parameter optional in `CallOptions` with default fallbacks, simplifying supervisor and session-joining call creation.
+- **Consistent Private Method Naming**: Standardized all internal helper methods across `Call` and `FiretellClient` with `_` prefix convention (`_extractSdpInit`, `_handleWsMessage`, `_setupWebrtcMedia`, `_getSDPFull`, `_cleanupPeerConnection`, `_superviseCall`, `_isVideoCall`).
 
 ## [1.1.4] - 2026-08-15
 
