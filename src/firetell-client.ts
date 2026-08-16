@@ -530,7 +530,7 @@ export class FiretellClient {
   /**
    * Initiate Call Supervision (listen / whisper / barge) via REST API.
    */
-  private async superviseCall(
+  private async _superviseCall(
     callId: string,
     mode: "listen" | "whisper" | "barge"
   ): Promise<ISupervisionResponse> {
@@ -560,7 +560,7 @@ export class FiretellClient {
     mode: "listen" | "whisper" | "barge",
     options?: import("./interfaces/call-options.interface").CallOptions
   ): Promise<Call> {
-    const res = await this.superviseCall(callId, mode);
+    const res = await this._superviseCall(callId, mode);
     if (!res.ws_url) {
       throw new Error("Server did not return ws_url for supervision session");
     }
@@ -715,7 +715,7 @@ export class FiretellClient {
     }
   }
 
-  private isVideoCall(sdp: RTCSessionDescriptionInit): boolean {
+  private _isVideoCall(sdp: RTCSessionDescriptionInit): boolean {
     return /m=video/.test(sdp.sdp || "");
   }
 
@@ -742,7 +742,7 @@ export class FiretellClient {
       from,
       from_name,
       to: to || this.getSessionInfo()?.username || "",
-      isVideo: this.isVideoCall(sdp),
+      isVideo: this._isVideoCall(sdp),
       isTransfer: is_transfer || false,
     });
     call.callId = call_id;
