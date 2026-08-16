@@ -1,5 +1,5 @@
 export interface CallOptions {
-  to: string;
+  to?: string;
   from?: string;
   from_name?: string;
   isVideo?: boolean;

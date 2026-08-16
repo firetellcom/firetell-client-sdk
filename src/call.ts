@@ -32,13 +32,12 @@ export class Call extends SimpleEventEmitter {
   private _destroying: boolean = false;
   private currentRemoteSetupRole: string | null = null;
 
-  constructor(client: FiretellClient, options: CallOptions) {
+  constructor(client: FiretellClient, options: CallOptions = {}) {
     super();
     if (!(client instanceof FiretellClient))
       throw new Error("Missing or invalid client instance");
-    if (!options.to) throw new Error("destination (to) is required in options");
     this.client = client;
-    this.to = options.to;
+    this.to = options.to || "";
     this.from = options.from || "";
     this.from_name = options.from_name || "";
     this.isVideo = options.isVideo || false;
@@ -300,6 +299,41 @@ export class Call extends SimpleEventEmitter {
       await this.connectSignaling(res.ws_url, res.call_token);
 
       // Send call.offer over WebSocket
+      this.sendWsEvent("call.offer", { sdp: sdp.sdp });
+      this.active = true;
+    } catch (error: unknown) {
+      this.active = false;
+      this.state = ECallState.ERROR;
+      this.destroy(false);
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  /**
+   * Join an existing call session (e.g. Supervision: Listen, Whisper, Barge)
+   * using a pre-generated call_token and ws_url.
+   */
+  public async joinSession(
+    wsUrl: string,
+    callToken: string,
+    mode: "listen" | "whisper" | "barge" = "listen"
+  ): Promise<void> {
+    this.active = true;
+    this.state = ECallState.INITIATED;
+    try {
+      const isListenMode = mode === "listen";
+      // In listen (silent monitor) mode: do NOT request microphone permission / getUserMedia.
+      // Use WebRTC recvonly transceiver so browser shows no active microphone indicator.
+      await this.setupWebrtcMedia({
+        video: Boolean(this.isVideo),
+        audio: isListenMode ? false : true,
+      });
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+
+      const sdp = await this.getSDPFull();
+      await this.connectSignaling(wsUrl, callToken);
+
       this.sendWsEvent("call.offer", { sdp: sdp.sdp });
       this.active = true;
     } catch (error: unknown) {
@@ -620,20 +654,25 @@ export class Call extends SimpleEventEmitter {
         );
       };
 
-      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      // Add local tracks to peer connection
-      this.localStream.getTracks().forEach((track) =>
-        this.peerConnection.addTrack(track, this.localStream!)
-      );
-      this.emit(ECallEventName.LOCAL_STREAM, this.localStream);
-
       // Process remote stream
       this.peerConnection.ontrack = (event) => {
         const remoteStream = event.streams[0];
         this.remoteStream = remoteStream;
         this.emit(ECallEventName.REMOTE_STREAM, remoteStream);
       };
+
+      if (constraints.audio || constraints.video) {
+        this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // Add local tracks to peer connection
+        this.localStream.getTracks().forEach((track) =>
+          this.peerConnection.addTrack(track, this.localStream!)
+        );
+        this.emit(ECallEventName.LOCAL_STREAM, this.localStream);
+      } else {
+        // Receive-only mode (e.g. Listen / Silent Monitor): NO microphone requested!
+        this.peerConnection.addTransceiver("audio", { direction: "recvonly" });
+      }
 
       return true;
     } catch (error: unknown) {

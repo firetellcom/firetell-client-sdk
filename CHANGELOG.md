@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2026-08-17
+
+### Added
+
+- **`FiretellClient.startSupervision()`**: Added high-level helper method to initiate call supervision (`listen`, `whisper`, `barge`) and automatically establish WebRTC audio session in one call.
+- **`Call.joinSession()`**: Added method to connect signaling and send WebRTC offer using pre-generated `call_token` and `ws_url`.
+- **`ISupervisionResponse.ws_url`**: Added required `ws_url` field to `ISupervisionResponse` interface to support dedicated per-call WebSocket connections.
+
+### Changed & Improved
+
+- **Flexible `CallOptions` in `Call` Constructor**: Made `to` parameter optional in `CallOptions` with default fallbacks, simplifying supervisor and session-joining call creation.
+
 ## [1.1.4] - 2026-08-15
 
 ### Fixed

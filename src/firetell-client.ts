@@ -55,6 +55,7 @@ export interface ISupervisionResponse {
   supervisor: string;
   status: string;
   call_token: string;
+  ws_url: string;
   expires_in: number;
 }
 
@@ -529,7 +530,7 @@ export class FiretellClient {
   /**
    * Initiate Call Supervision (listen / whisper / barge) via REST API.
    */
-  public async superviseCall(
+  private async superviseCall(
     callId: string,
     mode: "listen" | "whisper" | "barge"
   ): Promise<ISupervisionResponse> {
@@ -548,6 +549,26 @@ export class FiretellClient {
     }
 
     return (await response.json()) as ISupervisionResponse;
+  }
+
+  /**
+   * Helper to start supervision (listen / whisper / barge) and automatically
+   * establish the WebRTC audio session.
+   */
+  public async startSupervision(
+    callId: string,
+    mode: "listen" | "whisper" | "barge",
+    options?: import("./interfaces/call-options.interface").CallOptions
+  ): Promise<Call> {
+    const res = await this.superviseCall(callId, mode);
+    if (!res.ws_url) {
+      throw new Error("Server did not return ws_url for supervision session");
+    }
+    const call = new Call(this, options);
+    call.callId = res.call_id;
+    this.activeCalls.set(res.call_id, call);
+    await call.joinSession(res.ws_url, res.call_token, mode);
+    return call;
   }
 
   /**
