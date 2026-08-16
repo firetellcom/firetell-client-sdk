@@ -206,26 +206,29 @@ await call.hangup();
 
 ## 🎧 Call Supervision (Supervisor / Monitor)
 
-Supervisors can monitor ongoing agent calls in 3 modes:
+Supervisors and team leaders can monitor ongoing active calls in 3 supervision modes:
 
 ```typescript
 // Mode 1: "listen" — Silent Monitoring (Supervisor hears both agent & customer)
-const call = await client.superviseCall("cl_123456789", "listen");
+const call = await client.startSupervision("cl_123456789", "listen");
 
 // Mode 2: "whisper" — Whisper / Coach (Only the agent hears the supervisor)
-const call = await client.superviseCall("cl_123456789", "whisper");
+const call = await client.startSupervision("cl_123456789", "whisper");
 
 // Mode 3: "barge" — 3-Way Barge-In (Both agent & customer hear supervisor)
-const call = await client.superviseCall("cl_123456789", "barge");
+const call = await client.startSupervision("cl_123456789", "barge");
 
-// Bind stream and start listening
+// Bind remote stream to audio element
 call.on(ECallEventName.REMOTE_STREAM, (stream) => {
   remoteAudio.srcObject = stream;
-  remoteAudio.play();
+  remoteAudio.play().catch(console.error);
 });
 
-await call.start();
+// Stop supervision session
+await call.hangup();
 ```
+
+> **Advanced Usage**: You can also use `client.superviseCall(callId, mode)` to fetch session credentials (`{ call_token, ws_url }`) and initialize the session manually via `call.joinSession(res.ws_url, res.call_token)`.
 
 ---
 

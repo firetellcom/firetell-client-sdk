@@ -32,13 +32,12 @@ export class Call extends SimpleEventEmitter {
   private _destroying: boolean = false;
   private currentRemoteSetupRole: string | null = null;
 
-  constructor(client: FiretellClient, options: CallOptions) {
+  constructor(client: FiretellClient, options: CallOptions = {}) {
     super();
     if (!(client instanceof FiretellClient))
       throw new Error("Missing or invalid client instance");
-    if (!options.to) throw new Error("destination (to) is required in options");
     this.client = client;
-    this.to = options.to;
+    this.to = options.to || "";
     this.from = options.from || "";
     this.from_name = options.from_name || "";
     this.isVideo = options.isVideo || false;
@@ -76,7 +75,7 @@ export class Call extends SimpleEventEmitter {
         this.ws.onmessage = (event: MessageEvent) => {
           try {
             const parsed = JSON.parse(event.data) as IWsEventMessage;
-            this.handleWsMessage(parsed, () => {
+            this._handleWsMessage(parsed, () => {
               clearTimeout(authTimeout);
               resolve();
             });
@@ -117,7 +116,7 @@ export class Call extends SimpleEventEmitter {
    * Helper to extract a valid RTCSessionDescriptionInit from WS event data.
    * Handles object formats { type, sdp }, nested { sdp: { type, sdp } }, or raw SDP strings.
    */
-  private extractSdpInit(data: unknown): RTCSessionDescriptionInit | null {
+  private _extractSdpInit(data: unknown): RTCSessionDescriptionInit | null {
     if (!data || typeof data !== "object") return null;
     const obj = data as Record<string, unknown>;
 
@@ -151,7 +150,7 @@ export class Call extends SimpleEventEmitter {
   /**
    * Process incoming WebSocket signaling messages for this call
    */
-  private handleWsMessage(msg: IWsEventMessage, onConnectSuccess: () => void): void {
+  private _handleWsMessage(msg: IWsEventMessage, onConnectSuccess: () => void): void {
     const { event, data } = msg;
 
     switch (event) {
@@ -169,7 +168,7 @@ export class Call extends SimpleEventEmitter {
       }
       case "call.offer": {
         if (data) {
-          const sdpInit = this.extractSdpInit(data);
+          const sdpInit = this._extractSdpInit(data);
           if (sdpInit) {
             this.remoteDescription = sdpInit;
             void this.setRemoteDescription(this.remoteDescription);
@@ -186,7 +185,7 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "call.answered": {
-        const sdpInit = this.extractSdpInit(data);
+        const sdpInit = this._extractSdpInit(data);
         if (sdpInit) {
           void this.setRemoteDescription(sdpInit);
         }
@@ -196,7 +195,7 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "call.held": {
-        const sdpInit = this.extractSdpInit(data);
+        const sdpInit = this._extractSdpInit(data);
         if (sdpInit) {
           void this.setRemoteDescription(sdpInit);
         }
@@ -205,7 +204,7 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "call.unheld": {
-        const sdpInit = this.extractSdpInit(data);
+        const sdpInit = this._extractSdpInit(data);
         if (sdpInit) {
           void this.setRemoteDescription(sdpInit);
         }
@@ -256,14 +255,14 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "call.sdp": {
-        const sdpInit = this.extractSdpInit(data);
+        const sdpInit = this._extractSdpInit(data);
         if (sdpInit) {
           void this.setRemoteDescription(sdpInit);
         }
         break;
       }
       case "call.state": {
-        const sdpInit = this.extractSdpInit(data);
+        const sdpInit = this._extractSdpInit(data);
         if (sdpInit) {
           void this.setRemoteDescription(sdpInit);
         }
@@ -287,12 +286,12 @@ export class Call extends SimpleEventEmitter {
     this.active = true;
     this.state = ECallState.INITIATED;
     try {
-      await this.setupWebrtcMedia({ video: this.isVideo, audio: true });
+      await this._setupWebrtcMedia({ video: this.isVideo, audio: true });
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
 
       // Wait for all ICE candidates to be gathered (Full ICE, not Trickle)
-      const sdp = await this.getSDPFull();
+      const sdp = await this._getSDPFull();
       const res = await this.client.initiateCallRest(this.to, this.from, Boolean(this.isVideo));
       this.callId = res.call_id;
 
@@ -300,6 +299,41 @@ export class Call extends SimpleEventEmitter {
       await this.connectSignaling(res.ws_url, res.call_token);
 
       // Send call.offer over WebSocket
+      this.sendWsEvent("call.offer", { sdp: sdp.sdp });
+      this.active = true;
+    } catch (error: unknown) {
+      this.active = false;
+      this.state = ECallState.ERROR;
+      this.destroy(false);
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  /**
+   * Join an existing call session (e.g. Supervision: Listen, Whisper, Barge)
+   * using a pre-generated call_token and ws_url.
+   */
+  public async joinSession(
+    wsUrl: string,
+    callToken: string,
+    mode: "listen" | "whisper" | "barge" = "listen"
+  ): Promise<void> {
+    this.active = true;
+    this.state = ECallState.INITIATED;
+    try {
+      const isListenMode = mode === "listen";
+      // In listen (silent monitor) mode: do NOT request microphone permission / getUserMedia.
+      // Use WebRTC recvonly transceiver so browser shows no active microphone indicator.
+      await this._setupWebrtcMedia({
+        video: Boolean(this.isVideo),
+        audio: isListenMode ? false : true,
+      });
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+
+      const sdp = await this._getSDPFull();
+      await this.connectSignaling(wsUrl, callToken);
+
       this.sendWsEvent("call.offer", { sdp: sdp.sdp });
       this.active = true;
     } catch (error: unknown) {
@@ -331,11 +365,11 @@ export class Call extends SimpleEventEmitter {
     if (!this.callId) throw new Error("callId is missing");
     if (!this.remoteDescription) throw new Error("remoteDescription is missing");
     try {
-      await this.setupWebrtcMedia({ video: this.isVideo, audio: true });
+      await this._setupWebrtcMedia({ video: this.isVideo, audio: true });
       await this.setRemoteDescription(this.remoteDescription);
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
-      const sdp = await this.getSDPFull();
+      const sdp = await this._getSDPFull();
 
       this.sendWsEvent("call.answer", {
         call_id: this.callId,
@@ -368,6 +402,12 @@ export class Call extends SimpleEventEmitter {
    * @param teamId Team ID
    */
   public async transfer(targetUsername: string, teamId: string = ""): Promise<void> {
+    if (!this.active) {
+      throw new Error("Cannot transfer: call is not active");
+    }
+    if (!targetUsername) {
+      throw new Error("Target username is required for call transfer");
+    }
     if (!this.callId) return;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.sendWsEvent("call.transfer", {
@@ -377,7 +417,7 @@ export class Call extends SimpleEventEmitter {
       });
     }
     this.active = false;
-    this.cleanupPeerConnection();
+    this._cleanupPeerConnection();
     if (this.client && this.callId) {
       this.client.activeCalls.delete(this.callId);
     }
@@ -464,7 +504,7 @@ export class Call extends SimpleEventEmitter {
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    const sdp = await this.getSDPFull();
+    const sdp = await this._getSDPFull();
     this.sendWsEvent("call.hold", { call_id: this.callId, sdp: sdp.sdp });
     this.state = ECallState.ONHOLD;
     this.emit(ECallEventName.STATE, { state: ECallState.ONHOLD });
@@ -486,7 +526,7 @@ export class Call extends SimpleEventEmitter {
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    const sdp = await this.getSDPFull();
+    const sdp = await this._getSDPFull();
     this.sendWsEvent("call.unhold", { call_id: this.callId, sdp: sdp.sdp });
     this.state = ECallState.ACTIVE;
     this.emit(ECallEventName.STATE, { state: ECallState.ACTIVE });
@@ -542,7 +582,7 @@ export class Call extends SimpleEventEmitter {
     }
     this.client = null;
 
-    this.cleanupPeerConnection();
+    this._cleanupPeerConnection();
 
     if (this.state !== ECallState.ENDED && this.state !== ECallState.ERROR) {
       this.state = ECallState.ENDED;
@@ -602,11 +642,11 @@ export class Call extends SimpleEventEmitter {
   /**
    * Setup WebRTC media (getUserMedia + peerConnection)
    */
-  private async setupWebrtcMedia(
+  private async _setupWebrtcMedia(
     constraints: MediaStreamConstraints
   ): Promise<boolean> {
     try {
-      this.cleanupPeerConnection();
+      this._cleanupPeerConnection();
       this.peerConnection = new RTCPeerConnection({
         iceServers: this.client?.iceServers?.length
           ? this.client.iceServers
@@ -620,20 +660,25 @@ export class Call extends SimpleEventEmitter {
         );
       };
 
-      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      // Add local tracks to peer connection
-      this.localStream.getTracks().forEach((track) =>
-        this.peerConnection.addTrack(track, this.localStream!)
-      );
-      this.emit(ECallEventName.LOCAL_STREAM, this.localStream);
-
       // Process remote stream
       this.peerConnection.ontrack = (event) => {
         const remoteStream = event.streams[0];
         this.remoteStream = remoteStream;
         this.emit(ECallEventName.REMOTE_STREAM, remoteStream);
       };
+
+      if (constraints.audio || constraints.video) {
+        this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // Add local tracks to peer connection
+        this.localStream.getTracks().forEach((track) =>
+          this.peerConnection.addTrack(track, this.localStream!)
+        );
+        this.emit(ECallEventName.LOCAL_STREAM, this.localStream);
+      } else {
+        // Receive-only mode (e.g. Listen / Silent Monitor): NO microphone requested!
+        this.peerConnection.addTransceiver("audio", { direction: "recvonly" });
+      }
 
       return true;
     } catch (error: unknown) {
@@ -645,7 +690,7 @@ export class Call extends SimpleEventEmitter {
    * Wait for ICE candidates to be gathered and return full SDP.
    * Firetell media servers do not support Trickle ICE.
    */
-  private async getSDPFull(): Promise<RTCSessionDescription> {
+  private async _getSDPFull(): Promise<RTCSessionDescription> {
     return new Promise((resolve, reject) => {
       const pc = this.peerConnection;
 
@@ -717,7 +762,7 @@ export class Call extends SimpleEventEmitter {
   /**
    * Cleanup the peer connection and streams
    */
-  private cleanupPeerConnection(): void {
+  private _cleanupPeerConnection(): void {
     this.isMuted = false;
     this.currentRemoteSetupRole = null;
     if (this.peerConnection) {
