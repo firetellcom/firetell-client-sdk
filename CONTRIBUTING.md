@@ -34,23 +34,30 @@ Thank you for your interest in contributing! This guide will help you get starte
 ```
 src/
 ├── index.ts                    # Public API exports
-├── firetell-client.ts          # Main client (REST API calls, SSE event listeners, Call factory)
-├── call.ts                     # WebRTC call instance (per-call WebSocket signaling, WebRTC media, SDP, call control)
-├── simple-event-emitter.ts     # Lightweight typed event emitter
+├── firetell-client.ts          # Main client (REST initiation, Call supervision, SSE event dispatch)
+├── call.ts                     # WebRTC call instance (per-call WebSocket signaling, Full ICE SDP, WebRTC media)
+├── constants/                  # Constants (API endpoints, default ICE servers)
+│   ├── index.ts                # Barrel export
+│   ├── api-endpoints.ts        # REST and SSE API endpoint paths
+│   └── ice-servers.ts          # Default STUN/TURN ICE server configuration
 ├── enums/                      # Enum definitions
 │   ├── index.ts                # Barrel export
-│   ├── call-state.enum.ts      # Call lifecycle states
-│   ├── call-event-name.enum.ts # Call-level event names
-│   ├── client-event-name.enum.ts # Client-level event names
+│   ├── call-state.enum.ts      # Call lifecycle states (RINGING, CONNECTING, ACTIVE, HELD, ENDED)
+│   ├── call-event-name.enum.ts # Call-level event names (state, localStream, remoteStream, etc.)
+│   ├── client-event-name.enum.ts # Client-level event names (call.ring, call.created, agent.state, etc.)
 │   ├── storage-key.enum.ts     # localStorage key constants
 │   └── message-notification.enum.ts # Native WebSocket per-call event names
-└── interfaces/                 # TypeScript interfaces
+├── interfaces/                 # TypeScript interfaces
+│   ├── index.ts                # Barrel export
+│   ├── session.interface.ts    # Session shape
+│   ├── call-options.interface.ts # Call constructor options
+│   ├── active-call.interface.ts # Reconnect response shape
+│   ├── jwt-payload.interface.ts # Decoded JWT payload
+│   └── ws-message.interface.ts # Event-based WebSocket message shapes
+└── utils/                      # Internal and reusable utilities
     ├── index.ts                # Barrel export
-    ├── session.interface.ts    # Session shape
-    ├── call-options.interface.ts # Call constructor options
-    ├── active-call.interface.ts # Reconnect response shape
-    ├── jwt-payload.interface.ts # Decoded JWT payload
-    └── rpc-message.interface.ts # Event-based WebSocket message shapes
+    ├── simple-event-emitter.ts # Lightweight typed event emitter (on, once, off, emit, offAll)
+    └── sse-stream.ts           # Zero-dependency Header-based SSE stream client (fetch + ReadableStream)
 ```
 
 ## Coding Conventions

@@ -1,10 +1,11 @@
-import { SimpleEventEmitter } from "./simple-event-emitter";
+import { SimpleEventEmitter, SseStreamClient, SseMessageEvent } from "./utils";
 import { Call } from "./call";
 import { ISession } from "./interfaces/session.interface";
 import { ECallState } from "./enums/call-state.enum";
 import { ECallEventName } from "./enums/call-event-name.enum";
 import { EClientEventName } from "./enums/client-event-name.enum";
 import { EStorageKey } from "./enums/storage-key.enum";
+import { CallOptions } from "./interfaces/call-options.interface";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
 import { DEFAULT_ICE_SERVERS } from "./constants/ice-servers";
@@ -71,7 +72,8 @@ export class FiretellClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 3000;
   private webRTCChecked: boolean = false;
-  private eventSource: EventSource | null = null;
+  private sseClient: SseStreamClient | null = null;
+  private knownCallStates = new Map<string, { status: string; weight: number; timestamp: number }>();
 
   /**
    * Event emitter for client events
@@ -173,33 +175,30 @@ export class FiretellClient {
 
   /**
    * Connect to Server-Sent Events (SSE) Realtime Event Stream
+   * using SseStreamClient with Authorization Bearer header.
    */
   private _initEventStream(): void {
     try {
-      if (typeof window === "undefined" || !window.EventSource) return;
+      const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}`;
 
-      const sseUrl = `${this.baseUrl}${API_ENDPOINTS.EVENT_STREAM}?token=${encodeURIComponent(this.jwt)}`;
-      this.eventSource = new EventSource(sseUrl, {
-        withCredentials: false,
-      });
-
-      const forwardEvents = [
-        { name: "call.created", enumName: EClientEventName.CALL_CREATED },
-        { name: "call.started", enumName: EClientEventName.CALL_STARTED },
-        { name: "agent.state", enumName: EClientEventName.AGENT_STATE },
-        { name: "agent.state.forced", enumName: EClientEventName.AGENT_STATE_FORCED },
-        { name: "agent.created", enumName: EClientEventName.AGENT_CREATED },
-        { name: "agent.updated", enumName: EClientEventName.AGENT_UPDATED },
-        { name: "agent.deleted", enumName: EClientEventName.AGENT_DELETED },
-        { name: "contact.created", enumName: EClientEventName.CONTACT_CREATED },
-        { name: "contact.updated", enumName: EClientEventName.CONTACT_UPDATED },
-        { name: "contact.deleted", enumName: EClientEventName.CONTACT_DELETED },
-        { name: "team.created", enumName: EClientEventName.TEAM_CREATED },
-        { name: "team.updated", enumName: EClientEventName.TEAM_UPDATED },
-        { name: "team.deleted", enumName: EClientEventName.TEAM_DELETED },
-        { name: "team.assigned", enumName: EClientEventName.TEAM_ASSIGNED },
-        { name: "team.unassigned", enumName: EClientEventName.TEAM_UNASSIGNED },
-      ];
+      const CALL_STATE_WEIGHT: Record<string, number> = {
+        created: 1,
+        initiated: 1,
+        pending: 1,
+        started: 2,
+        ringing: 2,
+        progress: 2,
+        answered: 3,
+        active: 3,
+        held: 3,
+        ended: 4,
+        completed: 4,
+        canceled: 4,
+        missed: 4,
+        failed: 4,
+        busy: 4,
+        rejected: 4,
+      };
 
       const seenEventSignatures = new Map<string, number>();
 
@@ -239,226 +238,258 @@ export class FiretellClient {
         return false;
       };
 
-      forwardEvents.forEach(({ name, enumName }) => {
-        this.eventSource?.addEventListener(name, (e: MessageEvent) => {
-          try {
-            const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-            if (isDuplicateEvent(data)) return;
-            this.events.emit(enumName, data);
-            if (name !== enumName) {
-              this.events.emit(name, data);
-            }
-          } catch (err) {
-            console.error(`Error parsing ${name} event:`, err);
+      const guardCallState = (eventName: string, payload: any): void => {
+        if (!payload || typeof payload !== "object") return;
+        const callId =
+          payload.data?.call_id ||
+          payload.data?.id ||
+          payload.call_id ||
+          payload.id;
+        if (!callId) return;
+
+        const rawStatus = (payload.data?.status || payload.status || "").toLowerCase();
+        let eventWeight = CALL_STATE_WEIGHT[rawStatus] || 0;
+
+        if (eventName === "call.created" && eventWeight < 1) eventWeight = 1;
+        else if ((eventName === "call.started" || eventName === "call.ring") && eventWeight < 2) eventWeight = 2;
+        else if (eventName === "call.answered" && eventWeight < 3) eventWeight = 3;
+        else if ((eventName === "call.ended" || eventName === "call.canceled") && eventWeight < 4) eventWeight = 4;
+
+        const now = Date.now();
+        if (this.knownCallStates.size > 200) {
+          for (const [k, v] of this.knownCallStates.entries()) {
+            if (now - v.timestamp > 600000) this.knownCallStates.delete(k);
           }
+        }
+
+        const existing = this.knownCallStates.get(callId);
+        if (existing && eventWeight < existing.weight) {
+          // Late or out-of-order event arriving after higher-ranked state:
+          // Preserve the higher status in payload to prevent UI state regression
+          if (payload.data && typeof payload.data === "object") {
+            payload.data.status = existing.status;
+            payload.data.is_late_event = true;
+          }
+          if (payload.status) {
+            payload.status = existing.status;
+          }
+          return;
+        }
+
+        const newStatus = rawStatus || (
+          eventWeight === 1 ? "created" :
+          eventWeight === 2 ? "started" :
+          eventWeight === 3 ? "active" :
+          eventWeight === 4 ? "ended" : "created"
+        );
+
+        this.knownCallStates.set(callId, {
+          status: newStatus,
+          weight: Math.max(existing?.weight || 0, eventWeight),
+          timestamp: now,
         });
-      });
+      };
 
-      // General fallback onmessage listener for any dynamic SSE event
-      this.eventSource.onmessage = (e: MessageEvent) => {
-        try {
-          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-          const eventName = data?.event || e.type || "message";
-          if (eventName !== "call.ring" && eventName !== "system.ping") {
-            this.events.emit(eventName, data);
+      const handleIncomingSseEvent = (msg: SseMessageEvent) => {
+        const { event, data } = msg;
+        if (isDuplicateEvent(data)) return;
+        guardCallState(event, data);
+
+        switch (event) {
+          case "call.ring": {
+            const ringData = (data || {}) as ICallRingParams;
+            this.events.emit(EClientEventName.CALL_RING, ringData);
+            if (ringData.call_token) {
+              const wsUrl =
+                ringData.ws_url ||
+                this.wsServers[0] ||
+                `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
+              this.createCallSession(ringData.call_token, wsUrl, ringData.call_id, {
+                to: ringData.to?.number || "",
+                from: ringData.from?.number || "",
+                from_name: ringData.from?.name || "",
+                isTransfer: ringData.is_transfer || false,
+              }).catch((err) =>
+                console.error("Error connecting call WebSocket from SSE ring:", err)
+              );
+            }
+            break;
           }
-        } catch (err) {
-          // Ignore unparseable ping/raw string messages
+          case "call.answered": {
+            const payload = data;
+            const callId = payload?.data?.call_id || payload?.data?.id || payload?.call_id || payload?.id;
+            if (callId) {
+              const call = this.activeCalls.get(callId);
+              if (call && call.callState !== ECallState.ACTIVE) {
+                call.emit(ECallEventName.STATE, {
+                  state: ECallState.ACTIVE,
+                  reason: "Answered",
+                  data: payload?.data || payload,
+                });
+              }
+            }
+            this.events.emit(EClientEventName.CALL_ANSWERED, payload);
+            this.events.emit("call.answered", payload);
+            break;
+          }
+          case "call.canceled": {
+            const callId = data?.data?.call_id || data?.data?.id || data?.call_id || data?.id;
+            if (callId) {
+              const call = this.activeCalls.get(callId);
+              if (call) {
+                call.emit(ECallEventName.STATE, {
+                  state: ECallState.ENDED,
+                  reason: data?.data?.hangup_cause || data?.reason || "Canceled",
+                  data: data?.data || data,
+                });
+                call.destroy(false);
+              }
+              this.activeCalls.delete(callId);
+            }
+            this.events.emit(EClientEventName.CALL_CANCELED, data);
+            this.events.emit("call.canceled", data);
+            this.events.emit("call.ended", data);
+            break;
+          }
+          case "call.ended": {
+            const callId = data?.data?.call_id || data?.data?.id || data?.call_id || data?.id;
+            if (callId) {
+              const call = this.activeCalls.get(callId);
+              if (call) {
+                call.emit(ECallEventName.STATE, {
+                  state: ECallState.ENDED,
+                  reason: data?.data?.hangup_cause || data?.reason || "Call Ended",
+                  data: data?.data || data,
+                });
+                call.destroy(false);
+              }
+              this.activeCalls.delete(callId);
+            }
+            this.events.emit(EClientEventName.CALL_ENDED, data);
+            this.events.emit("call.ended", data);
+            break;
+          }
+          case "system.error": {
+            console.error("SSE system error received:", data);
+            if (data?.code === "SSE_LIMIT_EXCEEDED") {
+              this.sseClient?.close();
+              this.session = null;
+              this.events.emit("error", new Error(data.message || "SSE connection limit exceeded"));
+              this.events.emit(EClientEventName.SESSION, null);
+            }
+            break;
+          }
+          case "call.created": {
+            this.events.emit(EClientEventName.CALL_CREATED, data);
+            this.events.emit("call.created", data);
+            break;
+          }
+          case "call.started": {
+            this.events.emit(EClientEventName.CALL_STARTED, data);
+            this.events.emit("call.started", data);
+            break;
+          }
+          case "agent.state": {
+            this.events.emit(EClientEventName.AGENT_STATE, data);
+            this.events.emit("agent.state", data);
+            break;
+          }
+          case "agent.state.forced": {
+            this.events.emit(EClientEventName.AGENT_STATE_FORCED, data);
+            this.events.emit("agent.state.forced", data);
+            break;
+          }
+          case "agent.created": {
+            this.events.emit(EClientEventName.AGENT_CREATED, data);
+            this.events.emit("agent.created", data);
+            break;
+          }
+          case "agent.updated": {
+            this.events.emit(EClientEventName.AGENT_UPDATED, data);
+            this.events.emit("agent.updated", data);
+            break;
+          }
+          case "agent.deleted": {
+            this.events.emit(EClientEventName.AGENT_DELETED, data);
+            this.events.emit("agent.deleted", data);
+            break;
+          }
+          case "contact.created": {
+            this.events.emit(EClientEventName.CONTACT_CREATED, data);
+            this.events.emit("contact.created", data);
+            break;
+          }
+          case "contact.updated": {
+            this.events.emit(EClientEventName.CONTACT_UPDATED, data);
+            this.events.emit("contact.updated", data);
+            break;
+          }
+          case "contact.deleted": {
+            this.events.emit(EClientEventName.CONTACT_DELETED, data);
+            this.events.emit("contact.deleted", data);
+            break;
+          }
+          case "team.created": {
+            this.events.emit(EClientEventName.TEAM_CREATED, data);
+            this.events.emit("team.created", data);
+            break;
+          }
+          case "team.updated": {
+            this.events.emit(EClientEventName.TEAM_UPDATED, data);
+            this.events.emit("team.updated", data);
+            break;
+          }
+          case "team.deleted": {
+            this.events.emit(EClientEventName.TEAM_DELETED, data);
+            this.events.emit("team.deleted", data);
+            break;
+          }
+          case "team.assigned": {
+            this.events.emit(EClientEventName.TEAM_ASSIGNED, data);
+            this.events.emit("team.assigned", data);
+            break;
+          }
+          case "team.unassigned": {
+            this.events.emit(EClientEventName.TEAM_UNASSIGNED, data);
+            this.events.emit("team.unassigned", data);
+            break;
+          }
+          default: {
+            if (event !== "system.ping") {
+              this.events.emit(event, data);
+            }
+            break;
+          }
         }
       };
 
-      /**
-       * Inbound Call Notification (SSE):
-       * In Firetell's architecture, WebSocket signaling connections are created on-demand per call (not kept alive while idle).
-       * When an incoming call arrives, the backend dispatches a 'call.ring' event over the persistent SSE event stream
-       * containing a short-lived call_token and the target signaling WebSocket URL.
-       * The SDK emits CALL_RING to trigger incoming call UI/ringtones, and automatically connects the dedicated
-       * per-call WebSocket via _createCallSession().
-       */
-      this.eventSource.addEventListener("call.ring", (e: MessageEvent) => {
-        try {
-          const data = (typeof e.data === "string" ? JSON.parse(e.data) : e.data) as ICallRingParams;
-          if (isDuplicateEvent(data)) return;
-          this.events.emit(EClientEventName.CALL_RING, data);
-          if (data.call_token) {
-            const wsUrl =
-              data.ws_url ||
-              this.wsServers[0] ||
-              `wss://${this.baseUrl.replace(/^https?:\/\//, "")}/ws`;
-            this.createCallSession(data.call_token, wsUrl, data.call_id, {
-              to: data.to?.number || "",
-              from: data.from?.number || "",
-              from_name: data.from?.name || "",
-              isTransfer: data.is_transfer || false,
-            }).catch((err) =>
-              console.error("Error connecting call WebSocket from SSE ring:", err)
-            );
-          }
-        } catch (err) {
-          console.error("Error parsing call.ring event:", err);
-        }
+      if (this.sseClient) {
+        this.sseClient.close();
+        this.sseClient = null;
+      }
+
+      this.sseClient = new SseStreamClient({
+        url: sseUrl,
+        token: this.jwt,
+        onOpen: () => {
+          this.connected = true;
+        },
+        onMessage: handleIncomingSseEvent,
+        onConnectionStateChange: (state) => {
+          this.connected = state === "connected";
+          this.events.emit(EClientEventName.CONNECTION_STATE, state);
+        },
+        onError: (err) => {
+          console.warn("SSE Stream Client error:", err);
+        },
       });
 
-      /**
-       * Call Answered (SSE):
-       * Server broadcasts 'call.answered' when call is picked up.
-       */
-      this.eventSource.addEventListener("call.answered", (e: MessageEvent) => {
-        try {
-          const payload = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-          if (isDuplicateEvent(payload)) return;
-          const callId = payload?.data?.call_id || payload?.data?.id || payload?.call_id || payload?.id;
-          if (callId) {
-            const call = this.activeCalls.get(callId);
-            if (call && call.callState !== ECallState.ACTIVE) {
-              call.emit(ECallEventName.STATE, {
-                state: ECallState.ACTIVE,
-                reason: "Answered",
-                data: payload?.data || payload,
-              });
-            }
-          }
-          this.events.emit(EClientEventName.CALL_ANSWERED, payload);
-          this.events.emit("call.answered", payload);
-        } catch (err) {
-          console.error("Error parsing call.answered event:", err);
-        }
-      });
-
-      /**
-       * Call Canceled / Ringing Revocation (SSE):
-       * Why is this handled over SSE in addition to WebSocket?
-       * 1. Team / Ring-All Distribution: When a call rings multiple agents, as soon as one agent answers
-       *    or when the dialplan leg times out, the server broadcasts 'call.canceled' over SSE to all other agents.
-       * 2. Race Condition Prevention: The remaining agents might still be opening their per-call WebSocket or
-       *    have not finished WebSocket handshaking. Handling 'call.canceled' over SSE guarantees that the ringing
-       *    modal and ringtone are dismissed immediately on all agents' screens without relying on WebSocket state.
-       */
-      this.eventSource.addEventListener("call.canceled", (e: MessageEvent) => {
-        try {
-          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-          if (isDuplicateEvent(data)) return;
-          const callId = data?.data?.call_id || data?.data?.id || data?.call_id || data?.id;
-          if (callId) {
-            const call = this.activeCalls.get(callId);
-            if (call) {
-              call.emit(ECallEventName.STATE, {
-                state: ECallState.ENDED,
-                reason: data?.data?.hangup_cause || data?.reason || "Canceled",
-                data: data?.data || data,
-              });
-              call.destroy(false);
-            }
-            this.activeCalls.delete(callId);
-          }
-          this.events.emit(EClientEventName.CALL_CANCELED, data);
-          this.events.emit("call.canceled", data);
-          this.events.emit("call.ended", data);
-        } catch (err) {
-          console.error("Error parsing call.canceled event:", err);
-        }
-      });
-
-      /**
-       * Call Ended / Early Termination (SSE):
-       * Why is this handled over SSE in addition to WebSocket?
-       * If the caller hangs up before the agent answers (or while the per-call WebSocket is connecting),
-       * the server broadcasts 'call.ended' over SSE. This guarantees that the incoming call notification
-       * is closed immediately, preventing the ringing modal from lingering on screen indefinitely.
-       */
-      this.eventSource.addEventListener("call.ended", (e: MessageEvent) => {
-        try {
-          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-          if (isDuplicateEvent(data)) return;
-          const callId = data?.data?.call_id || data?.data?.id || data?.call_id || data?.id;
-          if (callId) {
-            const call = this.activeCalls.get(callId);
-            if (call) {
-              call.emit(ECallEventName.STATE, {
-                state: ECallState.ENDED,
-                reason: data?.data?.hangup_cause || data?.reason || "Call Ended",
-                data: data?.data || data,
-              });
-              call.destroy(false);
-            }
-            this.activeCalls.delete(callId);
-          }
-          this.events.emit(EClientEventName.CALL_ENDED, data);
-          this.events.emit("call.ended", data);
-        } catch (err) {
-          console.error("Error parsing call.ended event:", err);
-        }
-      });
-
-      this.eventSource.addEventListener("system.error", (e: MessageEvent) => {
-        try {
-          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-          console.error("SSE system error received:", data);
-          if (data?.code === "SSE_LIMIT_EXCEEDED") {
-            // Close connection, clear session, and stop reconnecting
-            if (this.eventSource) {
-              this.eventSource.close();
-              this.eventSource = null;
-            }
-            this.session = null;
-            this.events.emit("error", new Error(data.message || "SSE connection limit exceeded"));
-            this.events.emit(EClientEventName.SESSION, null);
-          }
-        } catch (err) {
-          console.error("Error handling system.error event:", err);
-        }
-      });
-
-      this.eventSource.onopen = () => {
-        console.log("SSE EventSource connected.");
-        this.connected = true;
-        this.reconnectDelay = 3000; // Reset backoff delay on successful connection
-        if (this.reconnectTimer) {
-          clearTimeout(this.reconnectTimer);
-          this.reconnectTimer = null;
-        }
-        this.events.emit(EClientEventName.CONNECTION_STATE, "connected");
-      };
-
-      this.eventSource.onerror = (err) => {
-        console.warn("SSE EventSource error:", err);
-        
-        this.connected = false;
-        this.events.emit(EClientEventName.CONNECTION_STATE, "disconnected");
-
-        if (this.eventSource && this.eventSource.readyState === EventSource.CLOSED) {
-          if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-          }
-
-          // Calculate next backoff delay with random jitter (max 60 seconds)
-          const currentDelay = this.reconnectDelay;
-          const jitter = Math.random() * 1000;
-          const nextDelay = currentDelay + jitter;
-
-          this.reconnectDelay = Math.min(this.reconnectDelay * 2, 60000);
-
-          console.log(`SSE EventSource disconnected. Reconnecting in ${Math.round(nextDelay)}ms...`);
-          this.events.emit(EClientEventName.CONNECTION_STATE, "connecting");
-
-          this.reconnectTimer = setTimeout(() => {
-            this.reconnectTimer = null;
-            // Only reconnect if we haven't logged out or initialized another connection
-            if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
-              this._initEventStream();
-            }
-          }, nextDelay);
-        }
-      };
+      this.sseClient.connect();
     } catch (err) {
-      console.warn("EventSource initialization skipped or unsupported:", err);
+      console.warn("SseStreamClient initialization skipped or unsupported:", err);
     }
   }
 
-  /**
-   * Initiate a new outbound call via REST API, then open native WebSocket per call.
-   * @param call Call instance
-   * @param sdp RTCSessionDescription (full SDP)
   /**
    * Call REST API POST /v1/call-center/calls to initiate call creation
    */
@@ -558,7 +589,7 @@ export class FiretellClient {
   public async startSupervision(
     callId: string,
     mode: "listen" | "whisper" | "barge",
-    options?: import("./interfaces/call-options.interface").CallOptions
+    options?: CallOptions
   ): Promise<Call> {
     const res = await this._superviseCall(callId, mode);
     if (!res.ws_url) {
@@ -569,6 +600,35 @@ export class FiretellClient {
     this.activeCalls.set(res.call_id, call);
     await call.joinSession(res.ws_url, res.call_token, mode);
     return call;
+  }
+
+  /**
+   * Helper to stop an active call supervision session.
+   * Closes WebRTC call session and calls the REST API DELETE /api/v1/call-center/calls/:call_id/supervision.
+   */
+  public async stopSupervision(callId: string): Promise<void> {
+    // 1. Destroy and cleanup active supervision Call session if present
+    const call = this.activeCalls.get(callId);
+    if (call) {
+      call.destroy();
+      this.activeCalls.delete(callId);
+    }
+
+    // 2. Call REST API DELETE /api/v1/call-center/calls/:call_id/supervision
+    const url = `${this.baseUrl}${API_ENDPOINTS.SUPERVISION_STOP(callId)}`;
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${this.jwt}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(
+        errData.message || `HTTP ${response.status}: Failed to stop supervision`
+      );
+    }
   }
 
   /**
@@ -640,9 +700,9 @@ export class FiretellClient {
     this.jwtPayload = payload;
 
     // Re-initialize SSE event stream
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
+    if (this.sseClient) {
+      this.sseClient.close();
+      this.sseClient = null;
     }
     this._initEventStream();
   }
@@ -661,7 +721,7 @@ export class FiretellClient {
    * @param storageKey Key to store device ID in localStorage (default: "firetell_device_id")
    * @returns Persistent unique device ID string
    */
-  public static getOrCreateDeviceId(storageKey: string = "firetell_device_id"): string {
+  public static getOrCreateDeviceId(storageKey: string = EStorageKey.DEVICE_ID): string {
     if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
       try {
         const existingId = localStorage.getItem(storageKey);
@@ -709,10 +769,11 @@ export class FiretellClient {
       this.reconnectTimer = null;
     }
     this.reconnectDelay = 3000;
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
+    if (this.sseClient) {
+      this.sseClient.close();
+      this.sseClient = null;
     }
+    this.knownCallStates.clear();
   }
 
   private _isVideoCall(sdp: RTCSessionDescriptionInit): boolean {
@@ -766,10 +827,11 @@ export class FiretellClient {
       this.reconnectTimer = null;
     }
     this.reconnectDelay = 3000;
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
+    if (this.sseClient) {
+      this.sseClient.close();
+      this.sseClient = null;
     }
+    this.knownCallStates.clear();
     this.session = null;
     this.jwtPayload = null;
     this.jwt = "";

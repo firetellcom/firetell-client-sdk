@@ -9,4 +9,6 @@ export type { CallOptions } from "./interfaces/call-options.interface";
 export type { IActiveCall } from "./interfaces/active-call.interface";
 export type { ICallRingParams } from "./firetell-client";
 export { DEFAULT_ICE_SERVERS } from "./constants";
+export { SseStreamClient, SimpleEventEmitter } from "./utils";
+export type { SseMessageEvent, SseStreamConfig, Listener } from "./utils";
 

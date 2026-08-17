@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2026-08-17
+
+### Added
+
+- **`FiretellClient.stopSupervision()`**: Added helper method to terminate an ongoing call supervision session (cleans up WebRTC call session and calls REST API `DELETE /v1/call-center/calls/:id/supervision`).
+- **Call State Monotonicity Guard**: Added automatic state ranking guard in `FiretellClient` to prevent late/out-of-order `call.created` events from overriding or regressing active call state machine (`status` is preserved at highest rank).
+
+## [1.1.6] - 2026-08-17
+
+### Added
+
+- **`SseStreamClient` (Header-Based SSE Streaming)**: Integrated lightweight, zero-dependency SSE stream client with `Authorization: Bearer <jwt>` HTTP header support via `fetch` and `ReadableStream`, completely eliminating JWT token exposure in SSE stream URLs and server access logs.
+- **SSE Stream Exports**: Exported `SseStreamClient`, `SseMessageEvent`, and `SseStreamConfig` from SDK entry point for custom streaming requirements.
+
 ## [1.1.5] - 2026-08-17
 
 ### Added

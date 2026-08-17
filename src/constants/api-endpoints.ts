@@ -13,6 +13,8 @@ export const API_ENDPOINTS = {
   EVENT_STREAM: "/stream",
   /** Supervision Endpoints */
   SUPERVISION: (callId: string, mode: string) => `/api/v1/call-center/calls/${callId}/${mode}`,
+  /** Stop Supervision Endpoint */
+  SUPERVISION_STOP: (callId: string) => `/api/v1/call-center/calls/${callId}/supervision`,
   /** Call Transfer Endpoint */
   TRANSFER: (callId: string) => `/api/v1/call-center/calls/${callId}/transfer`,
 } as const;
