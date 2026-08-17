@@ -2,7 +2,7 @@ import { ECallEventName } from "./enums/call-event-name.enum";
 import { EClientEventName } from "./enums/client-event-name.enum";
 import { ECallState } from "./enums/call-state.enum";
 import { CallOptions } from "./interfaces/call-options.interface";
-import { SimpleEventEmitter } from "./simple-event-emitter";
+import { SimpleEventEmitter } from "./utils";
 import { FiretellClient } from "./firetell-client";
 import { DEFAULT_ICE_SERVERS } from "./constants";
 
@@ -573,7 +573,9 @@ export class Call extends SimpleEventEmitter {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch {}
+      } catch {
+        // Ignore WebSocket close errors during cleanup
+      }
       this.ws = null;
     }
 

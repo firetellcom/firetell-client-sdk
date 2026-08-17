@@ -68,17 +68,18 @@ export default defineConfig({
 ```
 
 ### Priority Test Areas
-1. **SimpleEventEmitter** — on, once, off, emit, offAll
+1. **SimpleEventEmitter** (`src/utils/simple-event-emitter.ts`) — on, once, off, emit, offAll
 2. **JWT parsing** — valid tokens, invalid format, expired, missing fields
-3. **JSON-RPC message handling** — success response, error response, notification routing
-4. **Call state machine** — state transitions, terminal states cleanup
-5. **Reconnection logic** — retry count, backoff timing, max retries
-6. **Domain validation** — with/without protocol, trailing slash, invalid
+3. **Event-based WebSocket signaling** — `session.connect`, `call.offer`, `call.answer`, `call.hangup`, `call.hold`, `call.unhold`, `call.mute`, `call.dtmf`, `call.ice_candidate`
+4. **Call state machine** — state transitions (INITIATED → CONNECTING → ACTIVE → ENDED), terminal state cleanup
+5. **Call Supervision** — `startSupervision(callId, mode)` for `listen` (WebRTC `recvonly`), `whisper`, and `barge`
+6. **SseStreamClient & SSE stream events** — Header-based authorization (`Authorization: Bearer <jwt>`), chunked stream parser, event deduplication, exponential backoff reconnect
+7. **Domain & URL validation** — with/without protocol, ws_url resolution, trailing slashes
 
 ### Mocking Strategy
-- **WebSocket**: Mock `WebSocket` class for signaling tests
-- **RTCPeerConnection**: Mock for Call tests (browser API)
-- **fetch**: Mock for metadata/login endpoint tests
+- **WebSocket**: Mock `WebSocket` class for native per-call signaling tests
+- **RTCPeerConnection & MediaDevices**: Mock for WebRTC Call tests (`addTransceiver`, `createOffer`, `setRemoteDescription`, `getUserMedia`)
+- **fetch & ReadableStream**: Mock `fetch` with readable stream response body for REST APIs and SSE streaming tests
 - **localStorage**: jsdom provides this automatically
 
 ## Publishing

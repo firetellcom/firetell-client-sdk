@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2026-08-17
+
+### Added
+
+- **`SseStreamClient` (Header-Based SSE Streaming)**: Integrated lightweight, zero-dependency SSE stream client with `Authorization: Bearer <jwt>` HTTP header support via `fetch` and `ReadableStream`, completely eliminating JWT token exposure in SSE stream URLs and server access logs.
+- **SSE Stream Exports**: Exported `SseStreamClient`, `SseMessageEvent`, and `SseStreamConfig` from SDK entry point for custom streaming requirements.
+
 ## [1.1.5] - 2026-08-17
 
 ### Added
