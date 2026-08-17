@@ -5,6 +5,7 @@ import { ECallState } from "./enums/call-state.enum";
 import { ECallEventName } from "./enums/call-event-name.enum";
 import { EClientEventName } from "./enums/client-event-name.enum";
 import { EStorageKey } from "./enums/storage-key.enum";
+import { CallOptions } from "./interfaces/call-options.interface";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
 import { DEFAULT_ICE_SERVERS } from "./constants/ice-servers";
@@ -588,7 +589,7 @@ export class FiretellClient {
   public async startSupervision(
     callId: string,
     mode: "listen" | "whisper" | "barge",
-    options?: import("./interfaces/call-options.interface").CallOptions
+    options?: CallOptions
   ): Promise<Call> {
     const res = await this._superviseCall(callId, mode);
     if (!res.ws_url) {
@@ -599,6 +600,35 @@ export class FiretellClient {
     this.activeCalls.set(res.call_id, call);
     await call.joinSession(res.ws_url, res.call_token, mode);
     return call;
+  }
+
+  /**
+   * Helper to stop an active call supervision session.
+   * Closes WebRTC call session and calls the REST API DELETE /api/v1/call-center/calls/:call_id/supervision.
+   */
+  public async stopSupervision(callId: string): Promise<void> {
+    // 1. Destroy and cleanup active supervision Call session if present
+    const call = this.activeCalls.get(callId);
+    if (call) {
+      call.destroy();
+      this.activeCalls.delete(callId);
+    }
+
+    // 2. Call REST API DELETE /api/v1/call-center/calls/:call_id/supervision
+    const url = `${this.baseUrl}${API_ENDPOINTS.SUPERVISION_STOP(callId)}`;
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${this.jwt}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(
+        errData.message || `HTTP ${response.status}: Failed to stop supervision`
+      );
+    }
   }
 
   /**
