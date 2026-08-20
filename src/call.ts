@@ -2,9 +2,19 @@ import { ECallEventName } from "./enums/call-event-name.enum";
 import { EClientEventName } from "./enums/client-event-name.enum";
 import { ECallState } from "./enums/call-state.enum";
 import { CallOptions } from "./interfaces/call-options.interface";
-import { SimpleEventEmitter } from "./utils";
+import {
+  ITranscriptionStartedEvent,
+  ITranscriptionDialogueEvent,
+  ITranscriptionCompletedEvent,
+} from "./interfaces/transcription.interface";
+import {
+  ICallRecordingStartedEvent,
+  ICallRecordingCompletedEvent,
+  ICallRecordingReadyEvent,
+} from "./interfaces/recording.interface";
+import { SimpleEventEmitter, SseStreamClient, SseMessageEvent } from "./utils";
 import { FiretellClient } from "./firetell-client";
-import { DEFAULT_ICE_SERVERS } from "./constants";
+import { DEFAULT_ICE_SERVERS, API_ENDPOINTS } from "./constants";
 
 /** Event-based Native WebSocket message shape */
 export interface IWsEventMessage {
@@ -20,6 +30,7 @@ export class Call extends SimpleEventEmitter {
   public active: boolean = false;
   private client: FiretellClient | null;
   private ws: WebSocket | null = null;
+  private callSseClient: SseStreamClient | null = null;
   private state: ECallState = ECallState.NONE;
   private peerConnection: RTCPeerConnection;
   public remoteDescription: RTCSessionDescriptionInit | null = null;
@@ -234,22 +245,6 @@ export class Call extends SimpleEventEmitter {
             reason,
             data,
           });
-          this.client.events.emit("call.ended", {
-            call: this,
-            call_id: this.callId,
-            event,
-            reason,
-            data,
-          });
-          if (event === "call.canceled") {
-            this.client.events.emit("call.canceled", {
-              call: this,
-              call_id: this.callId,
-              event,
-              reason,
-              data,
-            });
-          }
         }
         this.destroy(false);
         break;
@@ -277,6 +272,136 @@ export class Call extends SimpleEventEmitter {
   }
 
   /**
+   * Register a callback for all transcription events on this call (started, dialogue, completed).
+   */
+  public onTranscription(
+    listener: (event: {
+      type: "started" | "dialogue" | "completed";
+      data:
+        | ITranscriptionStartedEvent
+        | ITranscriptionDialogueEvent
+        | ITranscriptionCompletedEvent;
+    }) => void
+  ): () => void {
+    this.on(ECallEventName.TRANSCRIPTION, listener);
+    return () => this.off(ECallEventName.TRANSCRIPTION, listener);
+  }
+
+  /**
+   * Register a callback for real-time speech dialogue transcription chunks.
+   */
+  public onDialogue(
+    listener: (dialogue: ITranscriptionDialogueEvent) => void
+  ): () => void {
+    this.on(ECallEventName.TRANSCRIPTION_DIALOGUE, listener);
+    return () => this.off(ECallEventName.TRANSCRIPTION_DIALOGUE, listener);
+  }
+
+  /**
+   * Register a callback for active call recording events (started, completed).
+   */
+  public onRecording(
+    listener: (event: {
+      type: "started" | "completed";
+      data: ICallRecordingStartedEvent | ICallRecordingCompletedEvent;
+    }) => void
+  ): () => void {
+    this.on(ECallEventName.RECORDING, listener);
+    return () => this.off(ECallEventName.RECORDING, listener);
+  }
+
+  /**
+   * Connect dedicated per-call Server-Sent Events (SSE) stream for live transcription and telemetry.
+   * Subscribes to `/stream?call_id=<callId>` using the call session token.
+   */
+  public connectCallEventStream(callToken?: string): void {
+    if (!this.client || !this.callId) return;
+
+    // Prevent opening multiple SSE streams for the same call session
+    if (this.callSseClient) return;
+
+    try {
+      const sseUrl = `${this.client.getBaseUrl()}${API_ENDPOINTS.EVENT_STREAM}?call_id=${encodeURIComponent(
+        this.callId
+      )}`;
+      const token = callToken || this.client.getJwt();
+
+      this.callSseClient = new SseStreamClient({
+        url: sseUrl,
+        token,
+        onMessage: (msg: SseMessageEvent) => {
+          this._handleSseMessage(msg);
+        },
+        onError: (err) => {
+          console.warn(`Call[${this.callId}] SSE stream warning:`, err);
+        },
+      });
+
+      this.callSseClient.connect();
+    } catch (err) {
+      console.warn(`Call[${this.callId}] SSE connection failed:`, err);
+    }
+  }
+
+  /**
+   * Process incoming Server-Sent Events for this specific call session.
+   */
+  private _handleSseMessage(msg: SseMessageEvent): void {
+    const { event, data } = msg;
+    let payload = data;
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        // use raw string
+      }
+    }
+    const d = (payload?.data || payload) || {};
+
+    switch (event) {
+      case "call.transcription.started":
+      case "transcription.started": {
+        const item = d as ITranscriptionStartedEvent;
+        this.emit(ECallEventName.TRANSCRIPTION_STARTED, item);
+        this.emit(ECallEventName.TRANSCRIPTION, { type: "started", data: item });
+        break;
+      }
+      case "call.transcription.dialogue":
+      case "transcription.dialogue": {
+        const item = d as ITranscriptionDialogueEvent;
+        this.emit(ECallEventName.TRANSCRIPTION_DIALOGUE, item);
+        this.emit(ECallEventName.TRANSCRIPTION, { type: "dialogue", data: item });
+        break;
+      }
+      case "call.transcription.completed":
+      case "transcription.completed": {
+        const item = d as ITranscriptionCompletedEvent;
+        this.emit(ECallEventName.TRANSCRIPTION_COMPLETED, item);
+        this.emit(ECallEventName.TRANSCRIPTION, { type: "completed", data: item });
+        break;
+      }
+      case "call.recording.started":
+      case "recording.started": {
+        const item = d as ICallRecordingStartedEvent;
+        this.emit(ECallEventName.RECORDING_STARTED, item);
+        this.emit(ECallEventName.RECORDING, { type: "started", data: item });
+        break;
+      }
+      case "call.recording.completed":
+      case "recording.completed": {
+        const item = d as ICallRecordingCompletedEvent;
+        this.emit(ECallEventName.RECORDING_COMPLETED, item);
+        this.emit(ECallEventName.RECORDING, { type: "completed", data: item });
+        break;
+      }
+      default: {
+        this.emit(event, d);
+        break;
+      }
+    }
+  }
+
+  /**
    * Start an outbound call.
    * Initiates REST call creation, connects dedicated WS signaling,
    * gathers full ICE candidates, and sends call.offer.
@@ -297,6 +422,9 @@ export class Call extends SimpleEventEmitter {
 
       // Connect dedicated WS for this call session
       await this.connectSignaling(res.ws_url, res.call_token);
+
+      // Connect dedicated SSE stream for this call session
+      this.connectCallEventStream(res.call_token);
 
       // Send call.offer over WebSocket
       this.sendWsEvent("call.offer", { sdp: sdp.sdp });
@@ -333,6 +461,9 @@ export class Call extends SimpleEventEmitter {
 
       const sdp = await this._getSDPFull();
       await this.connectSignaling(wsUrl, callToken);
+
+      // Connect dedicated SSE stream for this call session
+      this.connectCallEventStream(callToken);
 
       this.sendWsEvent("call.offer", { sdp: sdp.sdp });
       this.active = true;
@@ -375,6 +506,10 @@ export class Call extends SimpleEventEmitter {
         call_id: this.callId,
         sdp: sdp.sdp,
       });
+
+      // Connect dedicated per-call SSE stream for live transcription and telemetry
+      this.connectCallEventStream();
+
       this.active = true;
       this.state = ECallState.ANSWERED;
     } catch (error: unknown) {
@@ -577,6 +712,16 @@ export class Call extends SimpleEventEmitter {
         // Ignore WebSocket close errors during cleanup
       }
       this.ws = null;
+    }
+
+    // Close dedicated Call SSE Stream
+    if (this.callSseClient) {
+      try {
+        this.callSseClient.close();
+      } catch {
+        // Ignore SSE close errors during cleanup
+      }
+      this.callSseClient = null;
     }
 
     if (this.client && this.callId) {

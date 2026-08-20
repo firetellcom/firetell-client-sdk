@@ -641,6 +641,27 @@
           log(`Local mic ${params.muted ? "muted" : "unmuted"}`, "info");
         });
 
+        call.on("transcription.started", (data) => {
+          const lang = data?.language || "vi-VN";
+          log(`🎙️ Transcription started (${lang})`, "info");
+        });
+
+        call.on("transcription.completed", (data) => {
+          const summary = data?.summary || data?.full_text || "";
+          log(
+            `📝 Transcription completed${summary ? ": " + summary.slice(0, 80) + (summary.length > 80 ? "…" : "") : ""}`,
+            "success"
+          );
+        });
+
+        call.on("recording.started", () => {
+          log("⏺️ Call recording started", "info");
+        });
+
+        call.on("recording.completed", () => {
+          log("⏹️ Call recording completed", "info");
+        });
+
         // Show call card
         show("callCard");
         enableCallControls(false);

@@ -51,7 +51,8 @@ Cancel:    any → CANCEL
 
 ## Full ICE Gathering (getSDPFull)
 
-FreeSwitch requires Full ICE. The `getSDPFull()` method:
+Firetell's Media Server requires Full ICE. The `getSDPFull()` method:
+
 1. Checks if `iceGatheringState === "complete"` — if so, return immediately
 2. Otherwise, listens for `onicecandidate` events
 3. When `event.candidate === null`, all candidates gathered → resolve with localDescription
@@ -60,6 +61,7 @@ FreeSwitch requires Full ICE. The `getSDPFull()` method:
 ## Hold / Unhold
 
 Hold uses SDP renegotiation:
+
 ```
 Hold:   set transceiver direction = "sendonly" → createOffer → setLocalDescription
         → client.sendHold() → server returns answer SDP → setRemoteDescription
@@ -70,6 +72,7 @@ Unhold: set transceiver direction = "sendrecv" → createOffer → setLocalDescr
 ## Mute / Unmute
 
 Mute is client-side track control + server notification:
+
 ```
 Mute:   localStream.getAudioTracks().forEach(t => t.enabled = false)
         → client.sendMute(callId, true) → emit "mute" event
@@ -82,8 +85,8 @@ Unmute: localStream.getAudioTracks().forEach(t => t.enabled = true)
 ```typescript
 new RTCPeerConnection({
   iceServers: client.iceServers.length
-    ? client.iceServers          // From workspace metadata
-    : [{ urls: "stun:stun.l.google.com:19302" }]  // Fallback
+    ? client.iceServers // From workspace metadata
+    : [{ urls: "stun:stun.l.google.com:19302" }], // Fallback
 });
 ```
 

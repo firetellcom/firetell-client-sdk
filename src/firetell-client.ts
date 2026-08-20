@@ -329,7 +329,6 @@ export class FiretellClient {
               }
             }
             this.events.emit(EClientEventName.CALL_ANSWERED, payload);
-            this.events.emit("call.answered", payload);
             break;
           }
           case "call.canceled": {
@@ -347,8 +346,6 @@ export class FiretellClient {
               this.activeCalls.delete(callId);
             }
             this.events.emit(EClientEventName.CALL_CANCELED, data);
-            this.events.emit("call.canceled", data);
-            this.events.emit("call.ended", data);
             break;
           }
           case "call.ended": {
@@ -366,7 +363,6 @@ export class FiretellClient {
               this.activeCalls.delete(callId);
             }
             this.events.emit(EClientEventName.CALL_ENDED, data);
-            this.events.emit("call.ended", data);
             break;
           }
           case "system.error": {
@@ -381,77 +377,66 @@ export class FiretellClient {
           }
           case "call.created": {
             this.events.emit(EClientEventName.CALL_CREATED, data);
-            this.events.emit("call.created", data);
             break;
           }
           case "call.started": {
             this.events.emit(EClientEventName.CALL_STARTED, data);
-            this.events.emit("call.started", data);
             break;
           }
           case "agent.state": {
             this.events.emit(EClientEventName.AGENT_STATE, data);
-            this.events.emit("agent.state", data);
             break;
           }
           case "agent.state.forced": {
             this.events.emit(EClientEventName.AGENT_STATE_FORCED, data);
-            this.events.emit("agent.state.forced", data);
             break;
           }
           case "agent.created": {
             this.events.emit(EClientEventName.AGENT_CREATED, data);
-            this.events.emit("agent.created", data);
             break;
           }
           case "agent.updated": {
             this.events.emit(EClientEventName.AGENT_UPDATED, data);
-            this.events.emit("agent.updated", data);
             break;
           }
           case "agent.deleted": {
             this.events.emit(EClientEventName.AGENT_DELETED, data);
-            this.events.emit("agent.deleted", data);
             break;
           }
           case "contact.created": {
             this.events.emit(EClientEventName.CONTACT_CREATED, data);
-            this.events.emit("contact.created", data);
             break;
           }
           case "contact.updated": {
             this.events.emit(EClientEventName.CONTACT_UPDATED, data);
-            this.events.emit("contact.updated", data);
             break;
           }
           case "contact.deleted": {
             this.events.emit(EClientEventName.CONTACT_DELETED, data);
-            this.events.emit("contact.deleted", data);
             break;
           }
           case "team.created": {
             this.events.emit(EClientEventName.TEAM_CREATED, data);
-            this.events.emit("team.created", data);
             break;
           }
           case "team.updated": {
             this.events.emit(EClientEventName.TEAM_UPDATED, data);
-            this.events.emit("team.updated", data);
             break;
           }
           case "team.deleted": {
             this.events.emit(EClientEventName.TEAM_DELETED, data);
-            this.events.emit("team.deleted", data);
             break;
           }
           case "team.assigned": {
             this.events.emit(EClientEventName.TEAM_ASSIGNED, data);
-            this.events.emit("team.assigned", data);
             break;
           }
           case "team.unassigned": {
             this.events.emit(EClientEventName.TEAM_UNASSIGNED, data);
-            this.events.emit("team.unassigned", data);
+            break;
+          }
+          case "call.recording.ready": {
+            this.events.emit(EClientEventName.CALL_RECORDING_READY, data);
             break;
           }
           default: {
@@ -532,6 +517,7 @@ export class FiretellClient {
     call.callId = callId;
     this.activeCalls.set(callId, call);
     await call.connectSignaling(wsUrl, callToken);
+    call.connectCallEventStream(callToken);
     return call;
   }
 
@@ -554,6 +540,7 @@ export class FiretellClient {
     call.callId = res.call_id;
     this.activeCalls.set(res.call_id, call);
     await call.connectSignaling(res.ws_url, res.call_token);
+    call.connectCallEventStream(res.call_token);
     call.sendWsEvent("call.offer", { sdp: sdp.sdp });
     return res.call_id;
   }
@@ -713,6 +700,14 @@ export class FiretellClient {
 
   public getJwtPayload(): IJwtPayload | null {
     return this.jwtPayload;
+  }
+
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  public getJwt(): string {
+    return this.jwt;
   }
 
   /**

@@ -110,7 +110,33 @@ call.on(ECallEventName.STATE, (payload) => {
   }
 });
 
-// 3. Initiate the call
+// 3. Listen to Real-time Speech-to-Text Transcription & Dialogues
+call.on(ECallEventName.TRANSCRIPTION_DIALOGUE, (dialogue) => {
+  console.log(`[${dialogue.speaker}]: ${dialogue.text} (final: ${dialogue.speech_final})`);
+  // Render real-time live chat bubble / speech subtitles...
+});
+
+call.on(ECallEventName.TRANSCRIPTION_COMPLETED, (summaryData) => {
+  console.log("Call Transcription Completed:", summaryData.full_text);
+  console.log("AI Summary:", summaryData.summary);
+  console.log("Sentiment:", summaryData.sentiment);
+});
+
+// 4. Listen to Call Recording Events
+call.on(ECallEventName.RECORDING_STARTED, (event) => {
+  console.log("Call Recording Started:", event);
+});
+
+call.on(ECallEventName.RECORDING_COMPLETED, (event) => {
+  console.log("Call Recording Stopped:", event);
+});
+
+// Or listen to all recording events:
+call.onRecording((event) => {
+  console.log(`Recording Event [${event.type}]:`, event.data);
+});
+
+// 5. Initiate the call
 await call.start();
 ```
 
@@ -326,6 +352,7 @@ client.events.on("call.ended", ({ data }) => {
 | `contact.created` | `Contact` | Fired when a contact is created |
 | `contact.updated` | `Contact` | Fired when contact info is updated |
 | `contact.deleted` | `{ id }` | Fired when a contact is deleted |
+| `call.recording.ready` | `ICallRecordingReadyEvent` | Fired on workspace stream when call recording file is fully processed and ready to play/download |
 | `error` | `{ code, message }` | General client errors or authentication failures |
 
 ### `ECallEventName` (Call Instance Events)
@@ -336,6 +363,14 @@ client.events.on("call.ended", ({ data }) => {
 | `remoteStream` | `MediaStream` | Fired when remote audio/video stream is available (including Early Media / Ringback) |
 | `localStream` | `MediaStream` | Fired when local microphone/camera stream is captured |
 | `mediaState` | `RTCIceConnectionState` | WebRTC ICE connection status updates (`connecting`, `connected`, `failed`) |
+| `mute` | `{ muted: boolean }` | Fired when local microphone is muted or unmuted |
+| `transcription` | `TranscriptionEvent` | Consolidated real-time speech transcription lifecycle events |
+| `transcription.started` | `ITranscriptionStartedEvent` | Fired when real-time speech-to-text session begins |
+| `transcription.dialogue` | `ITranscriptionDialogueEvent` | Fired on each live speech dialogue chunk / subtitle |
+| `transcription.completed` | `ITranscriptionCompletedEvent` | Fired when full call transcription, summary, and sentiment analysis finish |
+| `recording` | `CallRecordingEvent` | Consolidated call recording lifecycle events |
+| `recording.started` | `ICallRecordingStartedEvent` | Fired when audio recording starts |
+| `recording.completed` | `ICallRecordingCompletedEvent` | Fired when audio recording finishes |
 
 ---
 

@@ -28,4 +28,5 @@ export enum EClientEventName {
     TEAM_ASSIGNED = "team.assigned",
     TEAM_UNASSIGNED = "team.unassigned",
     CONNECTION_STATE = "connection.state",
+    CALL_RECORDING_READY = "call.recording.ready",
 }

@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-20
+
+### Added
+
+- **Dedicated Per-Call SSE Event Stream (`Call.connectCallEventStream`)**:
+  - Automatically establishes a lightweight, dedicated SSE connection (`/stream?call_id=<callId>`) for each active call session (`call.start()`, `call.accept()`, `call.joinSession()`, and `client.createCallSession()`).
+  - Subscribes to the Per-Call channel and receive real-time speech-to-text transcriptions, recordings events, and telemetry without flooding the global workspace event stream.
+  - Automatically disconnects and cleans up the stream upon call termination (`call.destroy()`).
+- **Call-Scoped Real-Time Transcription Events & APIs**:
+  - Added `ECallEventName.TRANSCRIPTION` (`"transcription"`), `ECallEventName.TRANSCRIPTION_STARTED` (`"transcription.started"`), `ECallEventName.TRANSCRIPTION_DIALOGUE` (`"transcription.dialogue"`), and `ECallEventName.TRANSCRIPTION_COMPLETED` (`"transcription.completed"`).
+  - Added ergonomic helper listener methods on `Call`: `call.onDialogue((dialogue) => ...)` and `call.onTranscription((event) => ...)`.
+  - Exported TypeScript interfaces: `ITranscriptionStartedEvent`, `ITranscriptionDialogueEvent`, `ITranscriptionCompletedEvent`, and `TranscriptionEvent`.
+- **Call-Scoped Real-Time Recording Events & APIs**:
+  - Added `ECallEventName.RECORDING` (`"recording"`), `ECallEventName.RECORDING_STARTED` (`"recording.started"`), `ECallEventName.RECORDING_COMPLETED` (`"recording.completed"`), and `ECallEventName.RECORDING_READY` (`"recording.ready"`).
+  - Added ergonomic helper listener method on `Call`: `call.onRecording((event) => ...)`.
+  - Exported TypeScript interfaces: `ICallRecordingStartedEvent`, `ICallRecordingCompletedEvent`, `ICallRecordingReadyEvent`, and `CallRecordingEvent`.
+- **Public Getters on `FiretellClient`**:
+  - Added `client.getBaseUrl()` and `client.getJwt()` getters.
+
+### Changed & Improved
+
+- **Strict Single-Emission & Call-Scoped Event Architecture**:
+  - Removed duplicate event emissions across `FiretellClient._initEventStream()` and `Call._handleSseMessage()`.
+  - Decoupled per-call transcription events from `client.events`, strictly routing all live subtitles, chunks, and summaries directly to the owning `Call` instance (`call.on(...)`).
+  - Decoupled WebSocket signaling (`_handleWsMessage`) to handle exclusively Firetell WebRTC signaling (`call.offer`, `call.answered`, `call.state`, etc.), isolating SSE transport for transcription.
+- **Example Page Updated**:
+  - Added `transcription.started` and `transcription.completed` event logging to `example/index.html`.
+
 ## [1.1.7] - 2026-08-17
 
 ### Added
@@ -74,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **DTLS SSL Role Preservation on Renegotiation**: Fixed `Failed to set SSL role for the transport` error during caller-initiated hold (`call.onhold()`). Preserves established DTLS `a=setup` role (`active` / `passive`) in `setRemoteDescription()` across renegotiation answers from FreeSWITCH.
+- **DTLS SSL Role Preservation on Renegotiation**: Fixed `Failed to set SSL role for the transport` error during caller-initiated hold (`call.onhold()`). Preserves established DTLS `a=setup` role (`active` / `passive`) in `setRemoteDescription()` across renegotiation answers from Media Server.
 - **Incoming Call Accept Error Safety**: Added `try...catch` block around `Call.accept()` to guarantee proper media cleanup and `ECallState.ERROR` state emission if microphone access or WebRTC answer creation fails.
 
 ## [1.0.9] - 2026-08-12
@@ -158,6 +186,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Heartbeat mechanism (`session.ping/pong`) with stale detection
 - Agent presence notifications (`workspace.agent.state`)
 - Active call recovery after reconnection
-- Full ICE gathering (non-Trickle) for FreeSwitch compatibility
+- Full ICE gathering (non-Trickle) for Media Server compatibility
 - Multi-format builds: CJS, ESM, IIFE with TypeScript declarations
 - Typed event emitter for both client and call events

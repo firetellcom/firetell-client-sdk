@@ -4,4 +4,11 @@ export enum ECallEventName {
     LOCAL_STREAM = "localStream",
     REMOTE_STREAM = "remoteStream",
     MUTE = "mute",
+    TRANSCRIPTION = "transcription",
+    TRANSCRIPTION_STARTED = "transcription.started",
+    TRANSCRIPTION_DIALOGUE = "transcription.dialogue",
+    TRANSCRIPTION_COMPLETED = "transcription.completed",
+    RECORDING = "recording",
+    RECORDING_STARTED = "recording.started",
+    RECORDING_COMPLETED = "recording.completed",
 }

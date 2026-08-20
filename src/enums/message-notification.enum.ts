@@ -15,4 +15,7 @@ export enum EMessageNotification {
     "CALL_RECONNECT" = "call.reconnect",
     "CALL_GET_OFFER" = "call.getOffer",
     "AGENT_STATE" = "agent.state",
+    "CALL_TRANSCRIPTION_STARTED" = "call.transcription.started",
+    "CALL_TRANSCRIPTION_DIALOGUE" = "call.transcription.dialogue",
+    "CALL_TRANSCRIPTION_COMPLETED" = "call.transcription.completed",
 }
