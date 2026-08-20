@@ -46,25 +46,30 @@ src/
 ## Architecture Principles
 
 ### 1. Unified Call Architecture
+
 - **State Mutation & Call Initiation**: HTTP REST API (`POST /v1/call-center/calls` returns `call_id` + `call_token` + `ws_url`).
 - **Call Supervision**: `startSupervision(callId, mode)` initiates supervisor channel via REST API (`POST /v1/call-center/calls/:id/supervision`), then joins signaling via `call.joinSession(ws_url, call_token, mode)` using WebRTC `recvonly` (for `listen` mode) without activating supervisor microphone.
 - **Media Signaling Layer**: Native WebSocket per call session, authenticated via `call_token` sent in `session.connect` within 3 seconds.
 - **Event Observation Layer**: Persistent Server-Sent Events (SSE) stream (`GET /stream`) connecting via `SseStreamClient` with `Authorization: Bearer <jwt>` header (no token query param on URL).
 
 ### 2. Full ICE (Not Trickle)
-FreeSwitch requires Full ICE. The SDK gathers ALL ICE candidates before sending the SDP offer/answer to the server. See `Call._getSDPFull()`.
+
+Firetell's Media Server requires Full ICE. The SDK gathers ALL ICE candidates before sending the SDP offer/answer to the server. See `Call._getSDPFull()`.
 
 ### 3. Native Event-Based WebSocket Messaging (No JSON-RPC)
+
 - Simple `{ "event": string, "data": object }` JSON payload.
 - No JSON-RPC 2.0, no `rpc-websockets`, and no `socket.io` dependencies.
 
 ### 4. Event Emitter Pattern
+
 Both `FiretellClient` (via `.events`) and `Call` (extends `SimpleEventEmitter`) use typed events.
+
 - **Client events**: `session`, `error`, `call.ring`, `call.offer`, `call.created`, `call.started`, `call.answered`, `call.ended`, `call.canceled`, `agent.state`, `workspace.agent.state`
 - **Call events**: `state`, `localStream`, `remoteStream`, `mediaState`, `mute`
 
 ### 5. Lifecycle Management
+
 - `FiretellClient.logout()` — sends hangup for active calls, closes SSE stream, cleans up sessions
 - `FiretellClient.destroy()` — full client cleanup and listener detachment without server communication
 - `Call.destroy()` — closes peer connection, stops media tracks, removes listeners, closes WebSocket
-
