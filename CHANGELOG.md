@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-08-22
+
+### Added
+
+- **`transfer_reason` in `call.ring` Event & `Call` Instance**:
+  - Added `transfer_reason?: string` to `ICallRingParams` payload in the `call.ring` SSE event.
+  - Exposed `call.transferReason?: string` on the `Call` instance when a transferred call session is initialized.
+  - Allows frontends, Webphones, and Console agents to display the contextual transfer reason provided by Voice AI agents (e.g., *"Customer requested receptionist for billing inquiry"*) or human agents during ringing before and after answering.
+  - Updated `example/index.html` demo to display `transfer_reason` in the incoming call banner and event log.
+
 ## [1.2.0] - 2026-08-20
 
 ### Added

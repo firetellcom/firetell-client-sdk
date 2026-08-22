@@ -194,11 +194,18 @@
         </div>
 
         <!-- Transfer -->
-        <div class="transfer-row">
+        <div class="transfer-row" style="display: flex; gap: 6px; flex-wrap: wrap;">
           <input
             type="text"
             id="transferTarget"
             placeholder="Transfer to (username)…"
+            style="flex: 1; min-width: 140px;"
+          />
+          <input
+            type="text"
+            id="transferReasonInput"
+            placeholder="Reason (optional)…"
+            style="flex: 1; min-width: 140px;"
           />
           <button class="btn btn-ghost btn-sm" onclick="transferCall()">
             🔀 Transfer
@@ -403,17 +410,23 @@
 
           document.getElementById("incomingCaller").textContent =
             `🔔 ${fromName}${fromNum}`;
-          document.getElementById("incomingSub").textContent =
-            ringData.is_transfer
-              ? `Transferred call for ${toName}`
-              : `Incoming call for ${toName}`;
+
+          let subText = `Incoming call for ${toName}`;
+          if (ringData.is_transfer) {
+            subText = ringData.transfer_reason
+              ? `Transferred (${ringData.transfer_reason}) for ${toName}`
+              : `Transferred call for ${toName}`;
+          }
+          document.getElementById("incomingSub").textContent = subText;
           document.getElementById("incomingBanner").style.display = "block";
 
           startRingtone();
 
           log(
             `🔔 Instant Ring Alert from ${fromName}${fromNum}` +
-              (ringData.is_transfer ? " (transfer)" : ""),
+              (ringData.is_transfer
+                ? ` [Transfer${ringData.transfer_reason ? `: "${ringData.transfer_reason}"` : ""}]`
+                : ""),
             "info",
           );
         });
@@ -428,15 +441,23 @@
             call.number ||
             "Unknown";
           document.getElementById("incomingCaller").textContent = `📞 ${label}`;
-          document.getElementById("incomingSub").textContent = call.isTransfer
-            ? "Transferred call — WebRTC Ready"
-            : "Incoming call — WebRTC Ready";
+
+          let subText = "Incoming call — WebRTC Ready";
+          if (call.isTransfer) {
+            subText = call.transferReason
+              ? `Transferred (${call.transferReason}) — WebRTC Ready`
+              : "Transferred call — WebRTC Ready";
+          }
+          document.getElementById("incomingSub").textContent = subText;
           document.getElementById("incomingBanner").style.display = "block";
 
           startRingtone();
 
           log(
-            `WebRTC offer ready for call ${call.callId} from ${label}`,
+            `WebRTC offer ready for call ${call.callId} from ${label}` +
+              (call.isTransfer && call.transferReason
+                ? ` [Reason: "${call.transferReason}"]`
+                : ""),
             "success",
           );
 
@@ -731,13 +752,17 @@
       async function transferCall() {
         if (!activeCall) return;
         const target = document.getElementById("transferTarget").value.trim();
+        const reason = document.getElementById("transferReasonInput").value.trim();
         if (!target) {
           log("Transfer target required", "error");
           return;
         }
         try {
-          await activeCall.transfer(target);
-          log(`Transferred to ${target}`, "success");
+          await activeCall.transfer(target, "", reason || undefined);
+          log(
+            `Transferred to ${target}${reason ? ` (Reason: "${reason}")` : ""}`,
+            "success",
+          );
         } catch (e) {
           log(`Transfer error: ${e.message}`, "error");
         }

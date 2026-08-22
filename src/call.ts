@@ -39,6 +39,7 @@ export class Call extends SimpleEventEmitter {
   public isVideo: boolean | MediaTrackConstraints;
   public isMuted: boolean = false;
   public isTransfer: boolean;
+  public transferReason?: string;
   public isInternal: boolean;
   private _destroying: boolean = false;
   private currentRemoteSetupRole: string | null = null;
@@ -53,6 +54,7 @@ export class Call extends SimpleEventEmitter {
     this.from_name = options.from_name || "";
     this.isVideo = options.isVideo || false;
     this.isTransfer = options.isTransfer || false;
+    this.transferReason = options.transferReason;
     this.isInternal = options.isInternal || false;
     this.peerConnection = new RTCPeerConnection({
       iceServers: this.client?.iceServers?.length
@@ -535,8 +537,13 @@ export class Call extends SimpleEventEmitter {
    * Leaders and supervisors can transfer active calls.
    * @param targetUsername Username of the target agent
    * @param teamId Team ID
+   * @param reason Optional transfer reason
    */
-  public async transfer(targetUsername: string, teamId: string = ""): Promise<void> {
+  public async transfer(
+    targetUsername: string,
+    teamId: string = "",
+    reason?: string
+  ): Promise<void> {
     if (!this.active) {
       throw new Error("Cannot transfer: call is not active");
     }
@@ -549,6 +556,8 @@ export class Call extends SimpleEventEmitter {
         call_id: this.callId,
         to: targetUsername,
         team_id: teamId || undefined,
+        reason: reason || undefined,
+        transfer_reason: reason || undefined,
       });
     }
     this.active = false;
