@@ -4,5 +4,6 @@ export interface CallOptions {
   from_name?: string;
   isVideo?: boolean;
   isTransfer?: boolean;
+  transferReason?: string;
   isInternal?: boolean;
 }

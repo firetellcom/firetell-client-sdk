@@ -27,6 +27,7 @@ export interface ICallRingParams {
     name?: string;
   };
   is_transfer?: boolean;
+  transfer_reason?: string;
   timestamp?: string;
 }
 
@@ -38,6 +39,7 @@ interface ICallOfferParams {
   to: string;
   sdp: RTCSessionDescriptionInit;
   is_transfer?: boolean;
+  transfer_reason?: string;
 }
 
 /** Response from REST Make Call API */
@@ -309,6 +311,7 @@ export class FiretellClient {
                 from: ringData.from?.number || "",
                 from_name: ringData.from?.name || "",
                 isTransfer: ringData.is_transfer || false,
+                transferReason: ringData.transfer_reason,
               }).catch((err) =>
                 console.error("Error connecting call WebSocket from SSE ring:", err)
               );
@@ -625,11 +628,12 @@ export class FiretellClient {
   public async sendTransfer(
     callId: string,
     targetUsername: string,
-    teamId: string = ""
+    teamId: string = "",
+    reason?: string
   ): Promise<void> {
     const call = this.activeCalls.get(callId);
     if (call) {
-      await call.transfer(targetUsername, teamId);
+      await call.transfer(targetUsername, teamId, reason);
       return;
     }
 
@@ -643,6 +647,7 @@ export class FiretellClient {
       body: JSON.stringify({
         target_username: targetUsername,
         team_id: teamId || undefined,
+        reason: reason || undefined,
       }),
     });
 
