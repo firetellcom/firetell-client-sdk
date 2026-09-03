@@ -16,4 +16,9 @@ export type {
   ICallRecordingReadyEvent,
   CallRecordingEvent,
 } from "./recording.interface";
+export type {
+  IClientPhoneNumber,
+  IClientPhoneNumbersResponse,
+} from "./phone-number.interface";
+
 

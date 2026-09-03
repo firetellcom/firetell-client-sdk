@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-09-03
+
+### Added
+
+- **`getPhoneNumbers()` REST API on `FiretellClient`**:
+  - Added `public async getPhoneNumbers(options?: { page?: number; limit?: number }): Promise<IClientPhoneNumbersResponse>` to query phone numbers (DIDs) accessible by the authenticated agent and their shared teams.
+  - Automatically sends the agent's JWT to `GET /api/v1/call-center/phone-numbers`.
+  - Added `API_ENDPOINTS.PHONE_NUMBERS` (`"/api/v1/call-center/phone-numbers"`).
+  - Added `IClientPhoneNumber` and `IClientPhoneNumbersResponse` interfaces exporting phone number details (`id`, `number`, `title`, `country_code`, `dial_code`, `status`, `capabilities`, `enable_outbound`, `shared_teams_id`).
+- **Static & Named SDK Version Exports**:
+  - Added static `FiretellClient.VERSION` property on the class for direct, synchronous version access without instantiation.
+  - Exported `SDK_VERSION` constant directly from package root (`import { SDK_VERSION } from '@firetell/firetell-client-sdk'`).
+  - Added `"./package.json": "./package.json"` to the package `exports` map for direct version inspection by package managers and bundlers.
+
 ## [1.2.1] - 2026-08-22
 
 ### Added
