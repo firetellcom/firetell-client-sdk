@@ -17,4 +17,6 @@ export const API_ENDPOINTS = {
   SUPERVISION_STOP: (callId: string) => `/api/v1/call-center/calls/${callId}/supervision`,
   /** Call Transfer Endpoint */
   TRANSFER: (callId: string) => `/api/v1/call-center/calls/${callId}/transfer`,
+  /** Agent Accessible Phone Numbers (DIDs) Endpoint */
+  PHONE_NUMBERS: "/api/v1/call-center/phone-numbers",
 } as const;

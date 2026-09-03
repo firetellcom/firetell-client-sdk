@@ -7,11 +7,12 @@ import { EClientEventName } from "./enums/client-event-name.enum";
 import { EStorageKey } from "./enums/storage-key.enum";
 import { CallOptions } from "./interfaces/call-options.interface";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
+import { IClientPhoneNumbersResponse } from "./interfaces/phone-number.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
 import { DEFAULT_ICE_SERVERS } from "./constants/ice-servers";
 
 declare const __SDK_VERSION__: string;
-const SDK_VERSION = typeof __SDK_VERSION__ !== "undefined" ? __SDK_VERSION__ : "1.0.1";
+export const SDK_VERSION = typeof __SDK_VERSION__ !== "undefined" ? __SDK_VERSION__ : "1.0.1";
 
 /** Params for a call.ring notification */
 export interface ICallRingParams {
@@ -63,6 +64,7 @@ export interface ISupervisionResponse {
 }
 
 export class FiretellClient {
+  public static readonly VERSION = SDK_VERSION;
   public readonly sdkVersion = SDK_VERSION;
   private baseUrl = "";
   private jwt: string = "";
@@ -697,6 +699,33 @@ export class FiretellClient {
       this.sseClient = null;
     }
     this._initEventStream();
+  }
+
+  /**
+   * Fetch phone numbers (DIDs) accessible by the authenticated agent/team.
+   * Calls GET /api/v1/call-center/phone-numbers using the agent's JWT.
+   */
+  public async getPhoneNumbers(options?: {
+    page?: number;
+    limit?: number;
+  }): Promise<IClientPhoneNumbersResponse> {
+    const page = options?.page || 1;
+    const limit = options?.limit || 100;
+    const url = `${this.baseUrl}${API_ENDPOINTS.PHONE_NUMBERS}?page=${page}&limit=${limit}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to fetch phone numbers`);
+    }
+
+    return (await response.json()) as IClientPhoneNumbersResponse;
   }
 
   public getSessionInfo(): ISession | null {
