@@ -484,7 +484,7 @@ export class Call extends SimpleEventEmitter {
     if (!this.active) return;
     this.active = false;
     if (this.callId && this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendWsEvent("call.hangup", { call_id: this.callId });
+      this.sendWsEvent("call.hangup", {});
     }
     this.destroy(false);
   }
@@ -505,7 +505,6 @@ export class Call extends SimpleEventEmitter {
       const sdp = await this._getSDPFull();
 
       this.sendWsEvent("call.answer", {
-        call_id: this.callId,
         sdp: sdp.sdp,
       });
 
@@ -527,37 +526,33 @@ export class Call extends SimpleEventEmitter {
    */
   public async reject(): Promise<void> {
     if (this.callId && this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendWsEvent("call.reject", { call_id: this.callId });
+      this.sendWsEvent("call.reject", {});
     }
     this.destroy(false);
   }
 
   /**
-   * Transfer the call to another agent in the team.
-   * Leaders and supervisors can transfer active calls.
-   * @param targetUsername Username of the target agent
-   * @param teamId Team ID
+   * Transfer the call to another target.
+   * Target can be: extension number (e.g. "100"), agent username,
+   * team ID (te_...), or SIP account ID (si_...).
+   * @param target Transfer target identifier
    * @param reason Optional transfer reason
    */
   public async transfer(
-    targetUsername: string,
-    teamId: string = "",
+    target: string,
     reason?: string
   ): Promise<void> {
     if (!this.active) {
       throw new Error("Cannot transfer: call is not active");
     }
-    if (!targetUsername) {
-      throw new Error("Target username is required for call transfer");
+    if (!target) {
+      throw new Error("Target is required for call transfer");
     }
     if (!this.callId) return;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.sendWsEvent("call.transfer", {
-        call_id: this.callId,
-        to: targetUsername,
-        team_id: teamId || undefined,
+        target,
         reason: reason || undefined,
-        transfer_reason: reason || undefined,
       });
     }
     this.active = false;
@@ -580,7 +575,6 @@ export class Call extends SimpleEventEmitter {
     }
     if (!this.callId) return;
     this.sendWsEvent("call.dtmf", {
-      call_id: this.callId,
       digit,
       duration: duration || 250,
     });
@@ -601,7 +595,7 @@ export class Call extends SimpleEventEmitter {
       });
     }
     this.isMuted = true;
-    this.sendWsEvent("call.mute", { call_id: this.callId, muted: true });
+    this.sendWsEvent("call.mute", { muted: true });
     this.emit(ECallEventName.MUTE, { muted: true });
   }
 
@@ -620,7 +614,7 @@ export class Call extends SimpleEventEmitter {
       });
     }
     this.isMuted = false;
-    this.sendWsEvent("call.mute", { call_id: this.callId, muted: false });
+    this.sendWsEvent("call.mute", { muted: false });
     this.emit(ECallEventName.MUTE, { muted: false });
   }
 
@@ -649,7 +643,7 @@ export class Call extends SimpleEventEmitter {
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
     const sdp = await this._getSDPFull();
-    this.sendWsEvent("call.hold", { call_id: this.callId, sdp: sdp.sdp });
+    this.sendWsEvent("call.hold", { sdp: sdp.sdp });
     this.state = ECallState.ONHOLD;
     this.emit(ECallEventName.STATE, { state: ECallState.ONHOLD });
   }
@@ -671,7 +665,7 @@ export class Call extends SimpleEventEmitter {
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
     const sdp = await this._getSDPFull();
-    this.sendWsEvent("call.unhold", { call_id: this.callId, sdp: sdp.sdp });
+    this.sendWsEvent("call.unhold", { sdp: sdp.sdp });
     this.state = ECallState.ACTIVE;
     this.emit(ECallEventName.STATE, { state: ECallState.ACTIVE });
   }
@@ -709,7 +703,7 @@ export class Call extends SimpleEventEmitter {
     this._destroying = true;
 
     if (sendHangup && this.active && this.callId && this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendWsEvent("call.hangup", { call_id: this.callId });
+      this.sendWsEvent("call.hangup", {});
     }
     this.active = false;
 

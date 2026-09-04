@@ -194,18 +194,21 @@
         </div>
 
         <!-- Transfer -->
-        <div class="transfer-row" style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <div
+          class="transfer-row"
+          style="display: flex; gap: 6px; flex-wrap: wrap"
+        >
           <input
             type="text"
             id="transferTarget"
             placeholder="Transfer to (username)…"
-            style="flex: 1; min-width: 140px;"
+            style="flex: 1; min-width: 140px"
           />
           <input
             type="text"
             id="transferReasonInput"
             placeholder="Reason (optional)…"
-            style="flex: 1; min-width: 140px;"
+            style="flex: 1; min-width: 140px"
           />
           <button class="btn btn-ghost btn-sm" onclick="transferCall()">
             🔀 Transfer
@@ -671,7 +674,7 @@
           const summary = data?.summary || data?.full_text || "";
           log(
             `📝 Transcription completed${summary ? ": " + summary.slice(0, 80) + (summary.length > 80 ? "…" : "") : ""}`,
-            "success"
+            "success",
           );
         });
 
@@ -752,13 +755,15 @@
       async function transferCall() {
         if (!activeCall) return;
         const target = document.getElementById("transferTarget").value.trim();
-        const reason = document.getElementById("transferReasonInput").value.trim();
+        const reason = document
+          .getElementById("transferReasonInput")
+          .value.trim();
         if (!target) {
           log("Transfer target required", "error");
           return;
         }
         try {
-          await activeCall.transfer(target, "", reason || undefined);
+          await activeCall.transfer(target, reason || undefined);
           log(
             `Transferred to ${target}${reason ? ` (Reason: "${reason}")` : ""}`,
             "success",
