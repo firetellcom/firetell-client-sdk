@@ -624,18 +624,17 @@ export class FiretellClient {
   }
 
   /**
-   * Send Call Transfer request via REST API.
-   * Leaders and supervisors can transfer calls to another agent in the team.
+   * Send Call Transfer request via WebSocket or REST API fallback.
+   * Target can be: extension number, agent username, team ID (te_...), or SIP account ID (si_...).
    */
   public async sendTransfer(
     callId: string,
-    targetUsername: string,
-    teamId: string = "",
+    target: string,
     reason?: string
   ): Promise<void> {
     const call = this.activeCalls.get(callId);
     if (call) {
-      await call.transfer(targetUsername, teamId, reason);
+      await call.transfer(target, reason);
       return;
     }
 
@@ -647,8 +646,7 @@ export class FiretellClient {
         Authorization: `Bearer ${this.jwt}`,
       },
       body: JSON.stringify({
-        target_username: targetUsername,
-        team_id: teamId || undefined,
+        target,
         reason: reason || undefined,
       }),
     });

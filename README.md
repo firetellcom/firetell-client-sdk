@@ -210,8 +210,20 @@ await call.unhold();
 ### Transfer Call
 
 ```typescript
-// Transfer active call to another agent in team
-await call.transfer("agent.jane", "team_support_id");
+// Transfer to another agent by username
+await call.transfer("agent.jane");
+
+// Transfer to an extension number
+await call.transfer("100");
+
+// Transfer to a team
+await call.transfer("te_support_team_id");
+
+// Transfer to a SIP account
+await call.transfer("si_sip_account_id");
+
+// Transfer with a reason
+await call.transfer("agent.jane", "Customer needs billing support");
 ```
 
 ### Send DTMF Tones
