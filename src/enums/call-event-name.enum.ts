@@ -4,6 +4,8 @@ export enum ECallEventName {
     LOCAL_STREAM = "localStream",
     REMOTE_STREAM = "remoteStream",
     MUTE = "mute",
+    CAMERA = "camera",
+    SCREEN_SHARE = "screenShare",
     TRANSCRIPTION = "transcription",
     TRANSCRIPTION_STARTED = "transcription.started",
     TRANSCRIPTION_DIALOGUE = "transcription.dialogue",

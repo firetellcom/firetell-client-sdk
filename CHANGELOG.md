@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-09-09
+
+### Added
+
+- **Camera Mute/Unmute (Toggle Camera)**:
+  - Added `call.muteVideo()`, `call.unmuteVideo()`, and `call.toggleCamera()` methods on `Call`.
+  - Added `call.isCameraOff: boolean` property tracking local camera state.
+  - Added `ECallEventName.CAMERA` (`"camera"`) event emitted locally and on remote camera state updates via signaling.
+- **Native Screen Sharing (`getDisplayMedia` + `replaceTrack`)**:
+  - Added `call.startScreenShare()`, `call.stopScreenShare()`, and `call.toggleScreenShare()` on `Call`.
+  - Seamlessly replaces video track on the active `RTCRtpSender` without SDP renegotiation or call interruption.
+  - Automatically restores the original camera video track when the user stops sharing screen.
+  - Added `call.isScreenSharing: boolean` property tracking active screen share state.
+  - Added `ECallEventName.SCREEN_SHARE` (`"screenShare"`) event emitted locally and on remote screen share updates.
+- **SDP Video Auto-Detection in `call.offer` & `accept()`**:
+  - `Call.handleWsMessage`: Automatically falls back to inspecting the remote SDP offer for active video media sections (`/m=video [1-9]/`) if the explicit `is_video` boolean flag is omitted in the `call.offer` payload, ensuring `call.isVideo` is reliably set on the callee side.
+  - `Call.accept()`: Evaluates `this.remoteDescription.sdp` to guarantee `this.isVideo` is true before setting up local media, prompting the browser for both Camera and Microphone permissions (`{ video: true, audio: true }`).
+- **Resilient Remote Stream Track Assembly**:
+  - Improved `RTCPeerConnection.ontrack` in `_setupWebrtcMedia`: Automatically creates a `MediaStream` and attaches tracks incrementally if `event.streams[0]` is missing, ensuring both remote audio and video tracks are emitted via `ECallEventName.REMOTE_STREAM`.
+- **Caller Metadata Continuity**:
+  - Added support for `from_avatar` and `transfer_reason` fields in `call.offer` event processing so callee avatar and transfer context remain intact through WebRTC session negotiation.
+
+### Fixed
+
+- **Callee Video Negotiation**:
+  - Fixed an issue where incoming video calls defaulted to audio-only on the callee side due to missing `is_video` flag in signaling WebSocket payloads.
+- **Example Demo Web App**:
+  - Fixed `hideIncomingBanner` reference error on call dismissal.
+  - Added dynamic `updateVideoUI()` helper to automatically bind and display local/remote video elements when tracks arrive.
+
 ## [1.2.3] - 2026-09-04
 
 ### Changed
