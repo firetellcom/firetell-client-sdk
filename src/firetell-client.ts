@@ -22,6 +22,7 @@ export interface ICallRingParams {
   from?: {
     number: string;
     name?: string;
+    avatar?: string | null;
   };
   to?: {
     number: string;
@@ -29,6 +30,7 @@ export interface ICallRingParams {
   };
   is_transfer?: boolean;
   transfer_reason?: string;
+  is_video?: boolean;
   timestamp?: string;
 }
 
@@ -37,10 +39,12 @@ interface ICallOfferParams {
   call_id: string;
   from: string;
   from_name?: string;
+  from_avatar?: string | null;
   to: string;
   sdp: RTCSessionDescriptionInit;
   is_transfer?: boolean;
   transfer_reason?: string;
+  is_video?: boolean;
 }
 
 /** Response from REST Make Call API */
@@ -312,6 +316,8 @@ export class FiretellClient {
                 to: ringData.to?.number || "",
                 from: ringData.from?.number || "",
                 from_name: ringData.from?.name || "",
+                from_avatar: ringData.from?.avatar || null,
+                isVideo: Boolean(ringData.is_video),
                 isTransfer: ringData.is_transfer || false,
                 transferReason: ringData.transfer_reason,
               }).catch((err) =>
@@ -825,13 +831,15 @@ export class FiretellClient {
   }
 
   private _handleIncomingCall(params: ICallOfferParams): void {
-    const { call_id, from, from_name, to, sdp, is_transfer } = params;
+    const { call_id, from, from_name, from_avatar, to, sdp, is_transfer, transfer_reason, is_video } = params;
     const call = new Call(this, {
       from,
       from_name,
+      from_avatar,
       to: to || this.getSessionInfo()?.username || "",
-      isVideo: this._isVideoCall(sdp),
+      isVideo: is_video !== undefined ? is_video : this._isVideoCall(sdp),
       isTransfer: is_transfer || false,
+      transferReason: transfer_reason,
     });
     call.callId = call_id;
     call.remoteDescription = sdp;

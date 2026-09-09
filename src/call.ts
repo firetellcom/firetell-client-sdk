@@ -10,7 +10,6 @@ import {
 import {
   ICallRecordingStartedEvent,
   ICallRecordingCompletedEvent,
-  ICallRecordingReadyEvent,
 } from "./interfaces/recording.interface";
 import { SimpleEventEmitter, SseStreamClient, SseMessageEvent } from "./utils";
 import { FiretellClient } from "./firetell-client";
@@ -26,6 +25,10 @@ export class Call extends SimpleEventEmitter {
   public callId: string | null = null;
   public from: string;
   public from_name: string;
+  public from_avatar: string | null = null;
+  public get avatar(): string | null {
+    return this.from_avatar;
+  }
   public to: string;
   public active: boolean = false;
   private client: FiretellClient | null;
@@ -38,6 +41,10 @@ export class Call extends SimpleEventEmitter {
   private remoteStream: MediaStream | null = null;
   public isVideo: boolean | MediaTrackConstraints;
   public isMuted: boolean = false;
+  public isCameraOff: boolean = false;
+  public isScreenSharing: boolean = false;
+  private _cameraTrack: MediaStreamTrack | null = null;
+  private _screenStream: MediaStream | null = null;
   public isTransfer: boolean;
   public transferReason?: string;
   public isInternal: boolean;
@@ -52,6 +59,7 @@ export class Call extends SimpleEventEmitter {
     this.to = options.to || "";
     this.from = options.from || "";
     this.from_name = options.from_name || "";
+    this.from_avatar = options.from_avatar || null;
     this.isVideo = options.isVideo || false;
     this.isTransfer = options.isTransfer || false;
     this.transferReason = options.transferReason;
@@ -188,7 +196,14 @@ export class Call extends SimpleEventEmitter {
           }
           if (data.from) this.from = (data.from as { number?: string })?.number || String(data.from);
           if (data.from_name) this.from_name = String(data.from_name);
+          if (data.from_avatar !== undefined) this.from_avatar = (data.from_avatar as string) || null;
+          if (data.is_video !== undefined) {
+            this.isVideo = Boolean(data.is_video);
+          } else if (sdpInit?.sdp) {
+            this.isVideo = /m=video [1-9]/.test(sdpInit.sdp);
+          }
           if (data.is_transfer !== undefined) this.isTransfer = Boolean(data.is_transfer);
+          if (data.transfer_reason !== undefined) this.transferReason = String(data.transfer_reason);
         }
         this.state = ECallState.RINGING;
         this.emit(ECallEventName.STATE, { state: ECallState.RINGING, data });
@@ -223,6 +238,22 @@ export class Call extends SimpleEventEmitter {
         }
         this.state = ECallState.ACTIVE;
         this.emit(ECallEventName.STATE, { state: ECallState.ACTIVE, data });
+        break;
+      }
+      case "call.camera": {
+        this.emit(ECallEventName.CAMERA, {
+          enabled: Boolean(data?.enabled),
+          remote: true,
+          data,
+        });
+        break;
+      }
+      case "call.screen_share": {
+        this.emit(ECallEventName.SCREEN_SHARE, {
+          sharing: Boolean(data?.sharing),
+          remote: true,
+          data,
+        });
         break;
       }
       case "call.ended":
@@ -497,6 +528,10 @@ export class Call extends SimpleEventEmitter {
   public async accept(): Promise<void> {
     if (!this.callId) throw new Error("callId is missing");
     if (!this.remoteDescription) throw new Error("remoteDescription is missing");
+    // Ensure isVideo is accurately detected from remote offer SDP if not explicitly set
+    if (!this.isVideo && this.remoteDescription?.sdp) {
+      this.isVideo = /m=video [1-9]/.test(this.remoteDescription.sdp);
+    }
     try {
       await this._setupWebrtcMedia({ video: this.isVideo, audio: true });
       await this.setRemoteDescription(this.remoteDescription);
@@ -626,6 +661,186 @@ export class Call extends SimpleEventEmitter {
       await this.unmute();
     } else {
       await this.mute();
+    }
+  }
+
+  /**
+   * Mute / disable local camera video track.
+   * Remote party will receive black frames / paused stream.
+   */
+  public async muteVideo(): Promise<void> {
+    if (!this.active) {
+      throw new Error("Cannot mute video: call is not active");
+    }
+    if (this.localStream) {
+      this.localStream.getVideoTracks().forEach((track) => {
+        track.enabled = false;
+      });
+    }
+    this.isCameraOff = true;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.sendWsEvent("call.camera", { enabled: false });
+    }
+    this.emit(ECallEventName.CAMERA, { enabled: false, remote: false });
+  }
+
+  /**
+   * Unmute / enable local camera video track.
+   */
+  public async unmuteVideo(): Promise<void> {
+    if (!this.active) {
+      throw new Error("Cannot unmute video: call is not active");
+    }
+    if (this.localStream) {
+      this.localStream.getVideoTracks().forEach((track) => {
+        track.enabled = true;
+      });
+    }
+    this.isCameraOff = false;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.sendWsEvent("call.camera", { enabled: true });
+    }
+    this.emit(ECallEventName.CAMERA, { enabled: true, remote: false });
+  }
+
+  /**
+   * Toggle camera mute state
+   */
+  public async toggleCamera(): Promise<void> {
+    if (this.isCameraOff) {
+      await this.unmuteVideo();
+    } else {
+      await this.muteVideo();
+    }
+  }
+
+  /**
+   * Start sharing screen via navigator.mediaDevices.getDisplayMedia.
+   * Replaces the active video track on RTCRtpSender without renegotiating SDP.
+   */
+  public async startScreenShare(): Promise<void> {
+    if (!this.active) {
+      throw new Error("Cannot start screen share: call is not active");
+    }
+    if (!this.isVideo) {
+      throw new Error("Screen sharing is only available on video calls");
+    }
+    if (this.isScreenSharing) return;
+
+    if (!navigator?.mediaDevices?.getDisplayMedia) {
+      throw new Error("getDisplayMedia is not supported in this browser");
+    }
+
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) {
+        throw new Error("No video track found in display media stream");
+      }
+
+      const videoSender = this.peerConnection
+        ?.getSenders()
+        .find((s) => s.track && s.track.kind === "video");
+
+      if (!videoSender) {
+        screenStream.getTracks().forEach((t) => t.stop());
+        throw new Error("No active video sender found in peer connection");
+      }
+
+      // Save original camera track
+      this._cameraTrack = videoSender.track;
+      this._screenStream = screenStream;
+
+      // Replace track on RTCRtpSender seamlessly
+      await videoSender.replaceTrack(screenTrack);
+
+      // Replace video track in localStream so preview shows screen share
+      if (this.localStream) {
+        const oldTrack = this.localStream.getVideoTracks()[0];
+        if (oldTrack) {
+          this.localStream.removeTrack(oldTrack);
+        }
+        this.localStream.addTrack(screenTrack);
+        this.emit(ECallEventName.LOCAL_STREAM, this.localStream);
+      }
+
+      this.isScreenSharing = true;
+
+      // Native browser "Stop sharing" hook
+      screenTrack.onended = () => {
+        void this.stopScreenShare();
+      };
+
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.sendWsEvent("call.screen_share", { sharing: true });
+      }
+      this.emit(ECallEventName.SCREEN_SHARE, { sharing: true, remote: false });
+    } catch (err: unknown) {
+      if (this._screenStream) {
+        this._screenStream.getTracks().forEach((t) => t.stop());
+        this._screenStream = null;
+      }
+      this.isScreenSharing = false;
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  /**
+   * Stop sharing screen and restore original camera video track.
+   */
+  public async stopScreenShare(): Promise<void> {
+    if (!this.isScreenSharing) return;
+
+    try {
+      const videoSender = this.peerConnection
+        ?.getSenders()
+        .find((s) => s.track && s.track.kind === "video");
+
+      // Stop screen stream tracks
+      if (this._screenStream) {
+        this._screenStream.getTracks().forEach((t) => t.stop());
+        this._screenStream = null;
+      }
+
+      // Restore camera track if available
+      if (videoSender && this._cameraTrack) {
+        await videoSender.replaceTrack(this._cameraTrack);
+
+        if (this.localStream) {
+          const oldTrack = this.localStream.getVideoTracks()[0];
+          if (oldTrack) {
+            this.localStream.removeTrack(oldTrack);
+          }
+          this.localStream.addTrack(this._cameraTrack);
+          this.emit(ECallEventName.LOCAL_STREAM, this.localStream);
+        }
+      }
+
+      this.isScreenSharing = false;
+      this._cameraTrack = null;
+
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.sendWsEvent("call.screen_share", { sharing: false });
+      }
+      this.emit(ECallEventName.SCREEN_SHARE, { sharing: false, remote: false });
+    } catch (err: unknown) {
+      this.isScreenSharing = false;
+      this._cameraTrack = null;
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  /**
+   * Toggle screen sharing state
+   */
+  public async toggleScreenShare(): Promise<void> {
+    if (this.isScreenSharing) {
+      await this.stopScreenShare();
+    } else {
+      await this.startScreenShare();
     }
   }
 
@@ -812,8 +1027,16 @@ export class Call extends SimpleEventEmitter {
 
       // Process remote stream
       this.peerConnection.ontrack = (event) => {
-        const remoteStream = event.streams[0];
-        this.remoteStream = remoteStream;
+        let remoteStream = event.streams && event.streams[0];
+        if (!remoteStream) {
+          if (!this.remoteStream) {
+            this.remoteStream = new MediaStream();
+          }
+          this.remoteStream.addTrack(event.track);
+          remoteStream = this.remoteStream;
+        } else {
+          this.remoteStream = remoteStream;
+        }
         this.emit(ECallEventName.REMOTE_STREAM, remoteStream);
       };
 
@@ -923,6 +1146,13 @@ export class Call extends SimpleEventEmitter {
       this.peerConnection.ontrack = null;
       this.peerConnection.close();
     }
+    if (this._screenStream) {
+      this._screenStream.getTracks().forEach((track) => track.stop());
+      this._screenStream = null;
+    }
+    this._cameraTrack = null;
+    this.isCameraOff = false;
+    this.isScreenSharing = false;
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;

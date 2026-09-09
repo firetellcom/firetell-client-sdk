@@ -120,7 +120,7 @@
             id="videoCallBtn"
             onclick="makeCall(true)"
           >
-            🎥
+            🎥 Video
           </button>
         </div>
         <div class="input-group mt-8">
@@ -141,6 +141,23 @@
           <div class="call-timer" id="callTimer">00:00</div>
         </div>
 
+        <!-- Video Container (shown for video calls) -->
+        <div id="videoContainer" class="video-container hidden">
+          <video
+            id="remoteVideo"
+            class="remote-video"
+            autoplay
+            playsinline
+          ></video>
+          <video
+            id="localVideo"
+            class="local-video"
+            autoplay
+            playsinline
+            muted
+          ></video>
+        </div>
+
         <!-- Call Controls -->
         <div class="call-controls">
           <div style="position: relative">
@@ -153,6 +170,28 @@
               🎤
             </button>
             <span class="btn-label">Mute</span>
+          </div>
+          <div style="position: relative" id="cameraBtnWrapper" class="hidden">
+            <button
+              class="btn btn-icon btn-ghost"
+              id="cameraBtn"
+              onclick="toggleCamera()"
+              disabled
+            >
+              📹
+            </button>
+            <span class="btn-label">Camera</span>
+          </div>
+          <div style="position: relative" id="screenBtnWrapper" class="hidden">
+            <button
+              class="btn btn-icon btn-ghost"
+              id="screenBtn"
+              onclick="toggleScreenShare()"
+              disabled
+            >
+              🖥️
+            </button>
+            <span class="btn-label">Share</span>
           </div>
           <div style="position: relative">
             <button
@@ -247,8 +286,51 @@
 
       <!-- ── Incoming Call Banner ────────── -->
       <div class="incoming-banner" id="incomingBanner">
-        <div class="caller" id="incomingCaller">Unknown</div>
-        <div class="sub" id="incomingSub">Incoming call</div>
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+          "
+        >
+          <img
+            class="avatar"
+            id="incomingAvatar"
+            src=""
+            alt="Avatar"
+            style="display: none"
+          />
+          <div style="flex: 1; min-width: 0">
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-bottom: 2px;
+              "
+            >
+              <div class="caller" id="incomingCaller" style="margin-bottom: 0">
+                Unknown
+              </div>
+              <span
+                id="incomingCallTypeBadge"
+                class="badge"
+                style="
+                  display: none;
+                  font-size: 10px;
+                  padding: 2px 6px;
+                  background: rgba(99, 102, 241, 0.2);
+                  color: var(--primary);
+                "
+                >📹 Video</span
+              >
+            </div>
+            <div class="sub" id="incomingSub" style="margin-bottom: 0">
+              Incoming call
+            </div>
+          </div>
+        </div>
         <div class="actions">
           <button class="btn btn-green btn-sm" onclick="acceptIncoming()">
             ✅ Accept
@@ -271,6 +353,8 @@
       let client = null;
       let activeCall = null;
       let incomingCall = null;
+      let incomingRingData = null;
+      let pendingAutoAccept = false;
       let callTimerInterval = null;
       let callStartTime = null;
       const agents = new Map(); // username → state
@@ -398,6 +482,7 @@
 
         // 1. Instant Ring Alert via SSE (call.ring) — Shows Ringing UI Popup immediately
         client.events.on("call.ring", (ringData) => {
+          incomingRingData = ringData;
           const fromName =
             (typeof ringData.from === "object" && ringData.from
               ? ringData.from.name || ringData.from.number
@@ -406,15 +491,36 @@
             typeof ringData.from === "object" && ringData.from?.number
               ? ` (${ringData.from.number})`
               : "";
+          const fromAvatar =
+            typeof ringData.from === "object" && ringData.from?.avatar
+              ? ringData.from.avatar
+              : null;
+          const isVideo = Boolean(ringData.is_video);
           const toName =
             (typeof ringData.to === "object" && ringData.to
               ? ringData.to.name || ringData.to.number
               : ringData.to) || "";
 
           document.getElementById("incomingCaller").textContent =
-            `🔔 ${fromName}${fromNum}`;
+            `${isVideo ? "📹 " : "🔔 "}${fromName}${fromNum}`;
 
-          let subText = `Incoming call for ${toName}`;
+          const avatarEl = document.getElementById("incomingAvatar");
+          if (avatarEl) {
+            if (fromAvatar) {
+              avatarEl.src = fromAvatar;
+              avatarEl.style.display = "block";
+            } else {
+              avatarEl.src = "";
+              avatarEl.style.display = "none";
+            }
+          }
+
+          const videoBadge = document.getElementById("incomingCallTypeBadge");
+          if (videoBadge) {
+            videoBadge.style.display = isVideo ? "inline-block" : "none";
+          }
+
+          let subText = `Incoming ${isVideo ? "video " : ""}call for ${toName}`;
           if (ringData.is_transfer) {
             subText = ringData.transfer_reason
               ? `Transferred (${ringData.transfer_reason}) for ${toName}`
@@ -427,6 +533,8 @@
 
           log(
             `🔔 Instant Ring Alert from ${fromName}${fromNum}` +
+              (isVideo ? " [Video]" : "") +
+              (fromAvatar ? ` [Avatar: ${fromAvatar}]` : "") +
               (ringData.is_transfer
                 ? ` [Transfer${ringData.transfer_reason ? `: "${ringData.transfer_reason}"` : ""}]`
                 : ""),
@@ -436,16 +544,37 @@
 
         // 2. Incoming WebRTC Offer Ready (call.offer) — Binds WebRTC call object
         client.events.on("call.offer", (call) => {
+          if (incomingRingData?.is_video) {
+            call.isVideo = true;
+          }
           incomingCall = call;
+          if (pendingAutoAccept) {
+            pendingAutoAccept = false;
+            acceptIncoming();
+            return;
+          }
           const label =
             call.from_name ||
             call.from ||
             call.caller ||
             call.number ||
             "Unknown";
-          document.getElementById("incomingCaller").textContent = `📞 ${label}`;
+          const isVideo = Boolean(call.isVideo);
+          document.getElementById("incomingCaller").textContent =
+            `${isVideo ? "📹 " : "📞 "}${label}`;
 
-          let subText = "Incoming call — WebRTC Ready";
+          const avatarEl = document.getElementById("incomingAvatar");
+          if (avatarEl && call.from_avatar) {
+            avatarEl.src = call.from_avatar;
+            avatarEl.style.display = "block";
+          }
+
+          const videoBadge = document.getElementById("incomingCallTypeBadge");
+          if (videoBadge) {
+            videoBadge.style.display = isVideo ? "inline-block" : "none";
+          }
+
+          let subText = `Incoming ${isVideo ? "video " : ""}call — WebRTC Ready`;
           if (call.isTransfer) {
             subText = call.transferReason
               ? `Transferred (${call.transferReason}) — WebRTC Ready`
@@ -458,6 +587,8 @@
 
           log(
             `WebRTC offer ready for call ${call.callId} from ${label}` +
+              (isVideo ? " [Video]" : "") +
+              (call.from_avatar ? ` [Avatar: ${call.from_avatar}]` : "") +
               (call.isTransfer && call.transferReason
                 ? ` [Reason: "${call.transferReason}"]`
                 : ""),
@@ -467,7 +598,7 @@
           // Pre-bind state to handle CANCEL while ringing
           call.on("state", (params) => {
             if (["CANCEL", "ENDED", "ERROR"].includes(params.state)) {
-              document.getElementById("incomingBanner").style.display = "none";
+              hideIncomingBanner();
               incomingCall = null;
               stopRingtone();
               log(
@@ -584,12 +715,34 @@
       // ═══════════════════════════════════════
       // Incoming Call
       // ═══════════════════════════════════════
+      function hideIncomingBanner() {
+        const banner = document.getElementById("incomingBanner");
+        if (banner) banner.style.display = "none";
+        const avatar = document.getElementById("incomingAvatar");
+        if (avatar) {
+          avatar.src = "";
+          avatar.style.display = "none";
+        }
+        const badge = document.getElementById("incomingCallTypeBadge");
+        if (badge) badge.style.display = "none";
+      }
+
       async function acceptIncoming() {
-        if (!incomingCall) return;
-        document.getElementById("incomingBanner").style.display = "none";
+        if (!incomingCall) {
+          if (incomingRingData) {
+            log("Connecting WebRTC session before answering…", "info");
+            pendingAutoAccept = true;
+            document.getElementById("incomingSub").textContent =
+              "Connecting WebRTC…";
+          }
+          return;
+        }
+        hideIncomingBanner();
 
         const call = incomingCall;
         incomingCall = null;
+        incomingRingData = null;
+        pendingAutoAccept = false;
         stopRingtone();
 
         try {
@@ -609,17 +762,43 @@
       }
 
       async function rejectIncoming() {
-        if (!incomingCall) return;
-        document.getElementById("incomingBanner").style.display = "none";
+        hideIncomingBanner();
         stopRingtone();
+        pendingAutoAccept = false;
 
-        try {
-          await incomingCall.reject();
-          log("Call rejected", "warn");
-        } catch (error) {
-          log(`Reject failed: ${error.message}`, "error");
+        if (incomingCall) {
+          try {
+            await incomingCall.reject();
+            log("Call rejected", "warn");
+          } catch (error) {
+            log(`Reject failed: ${error.message}`, "error");
+          }
+          incomingCall = null;
+        } else if (incomingRingData?.call_id && client?.token) {
+          try {
+            const baseUrl = document
+              .getElementById("baseUrlInput")
+              .value.trim();
+            const protocol =
+              baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")
+                ? "http"
+                : "https";
+            await fetch(
+              `${protocol}://${baseUrl}/api/v1/call-center/calls/${incomingRingData.call_id}/reject`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${client.token}`,
+                  "Content-Type": "application/json",
+                },
+              },
+            );
+            log("Call rejected via API", "warn");
+          } catch (error) {
+            log(`Reject via API failed: ${error.message}`, "error");
+          }
         }
-        incomingCall = null;
+        incomingRingData = null;
       }
 
       // ═══════════════════════════════════════
@@ -647,13 +826,35 @@
           }
         });
 
+        const updateVideoUI = () => {
+          const isVideo = Boolean(call.isVideo);
+          const videoContainer = document.getElementById("videoContainer");
+          if (videoContainer) {
+            if (isVideo) {
+              videoContainer.classList.remove("hidden");
+            } else {
+              videoContainer.classList.add("hidden");
+            }
+          }
+          return isVideo;
+        };
+        updateVideoUI();
+
         call.on("localStream", (stream) => {
           document.getElementById("localAudio").srcObject = stream;
+          const localVideo = document.getElementById("localVideo");
+          if (localVideo) {
+            localVideo.srcObject = updateVideoUI() ? stream : null;
+          }
           if (stream) log("Local stream ready", "success");
         });
 
         call.on("remoteStream", (stream) => {
           document.getElementById("remoteAudio").srcObject = stream;
+          const remoteVideo = document.getElementById("remoteVideo");
+          if (remoteVideo) {
+            remoteVideo.srcObject = updateVideoUI() ? stream : null;
+          }
           if (stream) log("Remote stream ready", "success");
         });
 
@@ -663,6 +864,36 @@
 
         call.on("mute", (params) => {
           log(`Local mic ${params.muted ? "muted" : "unmuted"}`, "info");
+        });
+
+        call.on("camera", (params) => {
+          if (params.remote) {
+            log(
+              `Remote camera ${params.enabled ? "enabled" : "disabled"}`,
+              "info",
+            );
+          } else {
+            const btn = document.getElementById("cameraBtn");
+            if (btn) {
+              btn.textContent = activeCall?.isCameraOff ? "🚫" : "📹";
+              btn.classList.toggle("active", activeCall?.isCameraOff);
+            }
+          }
+        });
+
+        call.on("screenShare", (params) => {
+          if (params.remote) {
+            log(
+              `Remote party ${params.sharing ? "started" : "stopped"} screen sharing`,
+              "info",
+            );
+          } else {
+            const btn = document.getElementById("screenBtn");
+            if (btn) {
+              btn.textContent = activeCall?.isScreenSharing ? "⏹️" : "🖥️";
+              btn.classList.toggle("active", activeCall?.isScreenSharing);
+            }
+          }
         });
 
         call.on("transcription.started", (data) => {
@@ -712,6 +943,48 @@
           btn.classList.toggle("active", activeCall.isMuted);
         } catch (e) {
           log(`Mute error: ${e.message}`, "error");
+        }
+      }
+
+      async function toggleCamera() {
+        if (!activeCall) return;
+        try {
+          await activeCall.toggleCamera();
+          const btn = document.getElementById("cameraBtn");
+          btn.textContent = activeCall.isCameraOff ? "🚫" : "📹";
+          btn.classList.toggle("active", activeCall.isCameraOff);
+          log(
+            `Camera ${activeCall.isCameraOff ? "turned off" : "turned on"}`,
+            "info",
+          );
+        } catch (e) {
+          log(`Camera toggle error: ${e.message}`, "error");
+        }
+      }
+
+      async function toggleScreenShare() {
+        if (!activeCall) return;
+        try {
+          const btn = document.getElementById("screenBtn");
+          if (activeCall.isScreenSharing) {
+            await activeCall.stopScreenShare();
+            btn.textContent = "🖥️";
+            btn.classList.remove("active");
+            log("Screen sharing stopped", "info");
+          } else {
+            btn.textContent = "⏹️";
+            btn.classList.add("active");
+            log("Requesting screen share…", "info");
+            await activeCall.startScreenShare();
+            log("Screen sharing started", "success");
+          }
+        } catch (e) {
+          const btn = document.getElementById("screenBtn");
+          if (btn) {
+            btn.textContent = "🖥️";
+            btn.classList.remove("active");
+          }
+          log(`Screen share error: ${e.message}`, "error");
         }
       }
 
@@ -802,6 +1075,19 @@
         activeCall = null;
         disableDialer(false);
 
+        // Reset media streams
+        const localVideo = document.getElementById("localVideo");
+        if (localVideo) localVideo.srcObject = null;
+        const remoteVideo = document.getElementById("remoteVideo");
+        if (remoteVideo) remoteVideo.srcObject = null;
+        const videoContainer = document.getElementById("videoContainer");
+        if (videoContainer) videoContainer.classList.add("hidden");
+
+        const localAudio = document.getElementById("localAudio");
+        if (localAudio) localAudio.srcObject = null;
+        const remoteAudio = document.getElementById("remoteAudio");
+        if (remoteAudio) remoteAudio.srcObject = null;
+
         // Hide call card after short delay
         setTimeout(() => {
           hide("callCard");
@@ -811,6 +1097,20 @@
           document.getElementById("holdBtn").textContent = "⏸️";
           document.getElementById("holdBtn").classList.remove("active");
           document.getElementById("dtmfToggleBtn").classList.remove("active");
+          const cameraBtn = document.getElementById("cameraBtn");
+          if (cameraBtn) {
+            cameraBtn.textContent = "📹";
+            cameraBtn.classList.remove("active");
+          }
+          const screenBtn = document.getElementById("screenBtn");
+          if (screenBtn) {
+            screenBtn.textContent = "🖥️";
+            screenBtn.classList.remove("active");
+          }
+          const cameraWrapper = document.getElementById("cameraBtnWrapper");
+          if (cameraWrapper) cameraWrapper.classList.add("hidden");
+          const screenWrapper = document.getElementById("screenBtnWrapper");
+          if (screenWrapper) screenWrapper.classList.add("hidden");
         }, 2000);
       }
 
@@ -821,6 +1121,15 @@
       function enableCallControls(enabled) {
         document.getElementById("muteBtn").disabled = !enabled;
         document.getElementById("holdBtn").disabled = !enabled;
+        const isVideo = activeCall && Boolean(activeCall.isVideo);
+        const cameraWrapper = document.getElementById("cameraBtnWrapper");
+        const screenWrapper = document.getElementById("screenBtnWrapper");
+        if (cameraWrapper) cameraWrapper.classList.toggle("hidden", !isVideo);
+        if (screenWrapper) screenWrapper.classList.toggle("hidden", !isVideo);
+        const cameraBtn = document.getElementById("cameraBtn");
+        const screenBtn = document.getElementById("screenBtn");
+        if (cameraBtn) cameraBtn.disabled = !enabled || !isVideo;
+        if (screenBtn) screenBtn.disabled = !enabled || !isVideo;
       }
 
       function disableDialer(disabled) {
