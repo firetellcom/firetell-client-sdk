@@ -20,5 +20,22 @@ export type {
   IClientPhoneNumber,
   IClientPhoneNumbersResponse,
 } from "./phone-number.interface";
+export type {
+  IConversation,
+  IConversationLastMessage,
+  IConversationMessage,
+  IListConversationsQuery,
+  IListConversationsResponse,
+  IListMessagesQuery,
+  IListMessagesResponse,
+  IStartConversationPayload,
+  IStartConversationResponse,
+  ISendMessagePayload,
+  IUpdateConversationPayload,
+  IMarkAsReadResponse,
+  IMessageReceivedEvent,
+  IMessageSentEvent,
+  IMessageUpdatedEvent,
+} from "./conversation.interface";
 
 

@@ -19,6 +19,7 @@ Official TypeScript/JavaScript SDK for building WebRTC Voice & Video Communicati
 - 🎧 **Call Center Supervision** — Built-in `listen` (silent monitor), `whisper` (coach agent), and `barge` (3-way call) supervision modes.
 - 📥 **Instant Incoming Call Alerts** — Real-time ring notifications via SSE (`call.ring`) and WebRTC offer payloads (`call.offer`).
 - ⏸️ **In-Call Control** — Re-INVITE based Hold/Unhold, client-side Mute/Unmute, and DTMF tones (SIP INFO).
+- 💬 **Call Center SMS Conversations** — Complete 2-way SMS inbox, conversation threads, agent assignment, collision avoidance, and real-time delivery status tracking.
 - 👥 **Real-time Agent Presence** — Track team availability via Server-Sent Events (`agent.state`).
 - 📦 **Multi-Format Distribution** — Distributed as ESM (`.mjs`), CommonJS (`.js`), and Browser Bundle (`.global.js`).
 
@@ -337,6 +338,55 @@ client.events.on("call.ended", ({ data }) => {
 
 ---
 
+## 💬 Call Center SMS Conversations
+
+Manage two-way SMS/MMS conversations with real-time SSE synchronization:
+
+```typescript
+// 1. Fetch SMS Inbox conversations (with filters)
+const inbox = await client.getConversations({
+  status: "open",
+  unread_only: false,
+  limit: 20,
+});
+console.log("Active Threads:", inbox.data.length);
+
+// 2. Fetch conversation message history
+const history = await client.getConversationMessages("conv_a1b2c3d4e5f6", { limit: 50 });
+
+// 3. Send outbound SMS reply
+const message = await client.sendConversationMessage("conv_a1b2c3d4e5f6", {
+  body: "Hello! Thank you for reaching out to Firetell support.",
+});
+
+// 4. Mark conversation as read (resets unread badge)
+await client.markConversationAsRead("conv_a1b2c3d4e5f6");
+
+// 5. Real-Time SMS Event Listeners
+// Inbound customer message
+client.events.on("message.received", (data) => {
+  console.log("New SMS from:", data.from_number, "Body:", data.body);
+  // data: { id, conversation_id, from_number, to_number, body, unread_count, ... }
+});
+
+// Outbound message from teammate (prevents collision)
+client.events.on("message.sent", (data) => {
+  console.log("Teammate replied:", data.body, "by:", data.sender_id);
+});
+
+// Carrier delivery status update
+client.events.on("message.updated", (data) => {
+  console.log("Message status:", data.id, "Status:", data.status);
+});
+
+// Thread updated (assigned agent, status open/closed, read receipt)
+client.events.on("conversation.updated", (conv) => {
+  console.log("Thread updated:", conv.id, "Status:", conv.status, "Unread:", conv.unread_count);
+});
+```
+
+---
+
 ## 📖 API & Event Reference
 
 ### `EClientEventName` (Client Events)
@@ -365,6 +415,10 @@ client.events.on("call.ended", ({ data }) => {
 | `contact.updated` | `Contact` | Fired when contact info is updated |
 | `contact.deleted` | `{ id }` | Fired when a contact is deleted |
 | `call.recording.ready` | `ICallRecordingReadyEvent` | Fired on workspace stream when call recording file is fully processed and ready to play/download |
+| `message.received` | `IMessageReceivedEvent` | Fired when a new inbound SMS message is received from a customer |
+| `message.sent` | `IMessageSentEvent` | Fired when an outbound SMS is sent by any agent (prevents collision) |
+| `message.updated` | `IMessageUpdatedEvent` | Fired when carrier delivery status transitions (`queued`, `sent`, `delivered`, `failed`) |
+| `conversation.updated` | `IConversation` | Fired when a conversation thread status, assignment, or unread count updates |
 | `error` | `{ code, message }` | General client errors or authentication failures |
 
 ### `ECallEventName` (Call Instance Events)

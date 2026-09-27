@@ -20,6 +20,21 @@ export type {
   CallRecordingEvent,
   IClientPhoneNumber,
   IClientPhoneNumbersResponse,
+  IConversation,
+  IConversationLastMessage,
+  IConversationMessage,
+  IListConversationsQuery,
+  IListConversationsResponse,
+  IListMessagesQuery,
+  IListMessagesResponse,
+  IStartConversationPayload,
+  IStartConversationResponse,
+  ISendMessagePayload,
+  IUpdateConversationPayload,
+  IMarkAsReadResponse,
+  IMessageReceivedEvent,
+  IMessageSentEvent,
+  IMessageUpdatedEvent,
 } from "./interfaces";
 export { DEFAULT_ICE_SERVERS } from "./constants";
 export { SseStreamClient, SimpleEventEmitter } from "./utils";

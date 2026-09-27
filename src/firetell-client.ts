@@ -8,6 +8,19 @@ import { EStorageKey } from "./enums/storage-key.enum";
 import { CallOptions } from "./interfaces/call-options.interface";
 import { IJwtPayload } from "./interfaces/jwt-payload.interface";
 import { IClientPhoneNumbersResponse } from "./interfaces/phone-number.interface";
+import {
+  IConversation,
+  IConversationMessage,
+  IListConversationsQuery,
+  IListConversationsResponse,
+  IListMessagesQuery,
+  IListMessagesResponse,
+  IStartConversationPayload,
+  IStartConversationResponse,
+  ISendMessagePayload,
+  IUpdateConversationPayload,
+  IMarkAsReadResponse,
+} from "./interfaces/conversation.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
 import { DEFAULT_ICE_SERVERS } from "./constants/ice-servers";
 
@@ -450,6 +463,22 @@ export class FiretellClient {
             this.events.emit(EClientEventName.CALL_RECORDING_READY, data);
             break;
           }
+          case "message.received": {
+            this.events.emit(EClientEventName.MESSAGE_RECEIVED, data);
+            break;
+          }
+          case "message.sent": {
+            this.events.emit(EClientEventName.MESSAGE_SENT, data);
+            break;
+          }
+          case "message.updated": {
+            this.events.emit(EClientEventName.MESSAGE_UPDATED, data);
+            break;
+          }
+          case "conversation.updated": {
+            this.events.emit(EClientEventName.CONVERSATION_UPDATED, data);
+            break;
+          }
           default: {
             if (event !== "system.ping") {
               this.events.emit(event, data);
@@ -730,6 +759,195 @@ export class FiretellClient {
     }
 
     return (await response.json()) as IClientPhoneNumbersResponse;
+  }
+
+  /**
+   * List conversation threads (SMS Inbox) for Call Center agents.
+   * Calls GET /api/v1/call-center/conversations using the agent's JWT.
+   */
+  public async getConversations(
+    query?: IListConversationsQuery
+  ): Promise<IListConversationsResponse> {
+    const params = new URLSearchParams();
+    if (query?.status) params.set("status", query.status);
+    if (query?.assigned_to) params.set("assigned_to", query.assigned_to);
+    if (query?.assigned_team_id) params.set("assigned_team_id", query.assigned_team_id);
+    if (query?.unread_only !== undefined) params.set("unread_only", String(query.unread_only));
+    if (query?.search) params.set("search", query.search);
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.limit) params.set("limit", String(query.limit));
+
+    const qs = params.toString();
+    const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATIONS}${qs ? `?${qs}` : ""}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to fetch conversations`);
+    }
+
+    return (await response.json()) as IListConversationsResponse;
+  }
+
+  /**
+   * Start a new conversation thread or send initial SMS to a client.
+   * Calls POST /api/v1/call-center/conversations using the agent's JWT.
+   */
+  public async startConversation(
+    payload: IStartConversationPayload
+  ): Promise<IStartConversationResponse> {
+    const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATIONS}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to start conversation`);
+    }
+
+    return (await response.json()) as IStartConversationResponse;
+  }
+
+  /**
+   * Get details of a single conversation thread.
+   * Calls GET /api/v1/call-center/conversations/:id using the agent's JWT.
+   */
+  public async getConversation(conversationId: string): Promise<IConversation> {
+    const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATION_DETAILS(conversationId)}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to fetch conversation`);
+    }
+
+    return (await response.json()) as IConversation;
+  }
+
+  /**
+   * Update conversation thread (assign agent, assign team, status open/closed).
+   * Calls PATCH /api/v1/call-center/conversations/:id using the agent's JWT.
+   */
+  public async updateConversation(
+    conversationId: string,
+    payload: IUpdateConversationPayload
+  ): Promise<IConversation> {
+    const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATION_DETAILS(conversationId)}`;
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to update conversation`);
+    }
+
+    return (await response.json()) as IConversation;
+  }
+
+  /**
+   * Mark conversation messages as read by agent.
+   * Calls PATCH /api/v1/call-center/conversations/:id/read using the agent's JWT.
+   */
+  public async markConversationAsRead(
+    conversationId: string
+  ): Promise<IMarkAsReadResponse> {
+    const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATION_READ(conversationId)}`;
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to mark conversation as read`);
+    }
+
+    return (await response.json()) as IMarkAsReadResponse;
+  }
+
+  /**
+   * Get messages history for a conversation thread in chronological order.
+   * Calls GET /api/v1/call-center/conversations/:id/messages using the agent's JWT.
+   */
+  public async getConversationMessages(
+    conversationId: string,
+    query?: IListMessagesQuery
+  ): Promise<IListMessagesResponse> {
+    const params = new URLSearchParams();
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.limit) params.set("limit", String(query.limit));
+    if (query?.before) params.set("before", query.before);
+    if (query?.after) params.set("after", query.after);
+
+    const qs = params.toString();
+    const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATION_MESSAGES(conversationId)}${qs ? `?${qs}` : ""}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to fetch conversation messages`);
+    }
+
+    return (await response.json()) as IListMessagesResponse;
+  }
+
+  /**
+   * Send SMS message to client in an existing conversation thread.
+   * Calls POST /api/v1/call-center/conversations/:id/messages using the agent's JWT.
+   */
+  public async sendConversationMessage(
+    conversationId: string,
+    payload: ISendMessagePayload
+  ): Promise<IConversationMessage> {
+    const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATION_MESSAGES(conversationId)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.jwt}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || `HTTP ${response.status}: Failed to send conversation message`);
+    }
+
+    return (await response.json()) as IConversationMessage;
   }
 
   public getSessionInfo(): ISession | null {

@@ -19,4 +19,12 @@ export const API_ENDPOINTS = {
   TRANSFER: (callId: string) => `/api/v1/call-center/calls/${callId}/transfer`,
   /** Agent Accessible Phone Numbers (DIDs) Endpoint */
   PHONE_NUMBERS: "/api/v1/call-center/phone-numbers",
+  /** Conversations List / Start Endpoint */
+  CONVERSATIONS: "/api/v1/call-center/conversations",
+  /** Conversation Details / Update Endpoint */
+  CONVERSATION_DETAILS: (id: string) => `/api/v1/call-center/conversations/${id}`,
+  /** Conversation Messages Endpoint */
+  CONVERSATION_MESSAGES: (id: string) => `/api/v1/call-center/conversations/${id}/messages`,
+  /** Conversation Mark-As-Read Endpoint */
+  CONVERSATION_READ: (id: string) => `/api/v1/call-center/conversations/${id}/read`,
 } as const;
