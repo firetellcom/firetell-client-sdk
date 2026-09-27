@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] - 2026-09-27
+
+### Added
+
+- **Call Center SMS Conversations Module**:
+  - **REST API Methods on `FiretellClient`**:
+    - `getConversations(query?: IListConversationsQuery): Promise<IListConversationsResponse>`: List paginated conversation threads (SMS Inbox) with filtering by status, assigned agent, assigned team, unread count, and search query.
+    - `getConversation(conversationId: string): Promise<IConversation>`: Retrieve details of a specific conversation thread.
+    - `startConversation(payload: IStartConversationPayload): Promise<IStartConversationResponse>`: Initiate a new SMS conversation thread or dispatch initial outbound message to a client.
+    - `updateConversation(conversationId: string, payload: IUpdateConversationPayload): Promise<IConversation>`: Update conversation metadata (assign/reassign agent, team, or toggle open/closed status).
+    - `markConversationAsRead(conversationId: string): Promise<IMarkAsReadResponse>`: Mark conversation as read and reset `unread_count` to 0.
+    - `getConversationMessages(conversationId: string, query?: IListMessagesQuery): Promise<IListMessagesResponse>`: Fetch chronological message history of a conversation thread.
+    - `sendConversationMessage(conversationId: string, payload: ISendMessagePayload): Promise<IConversationMessage>`: Send outbound SMS/MMS reply in an active thread.
+  - **Real-Time Client Events in `EClientEventName`**:
+    - `EClientEventName.MESSAGE_RECEIVED` (`"message.received"`): Fired when an inbound SMS is received from a customer.
+    - `EClientEventName.MESSAGE_SENT` (`"message.sent"`): Fired when an outbound SMS is sent by any agent in the workspace/team (prevents agent collision).
+    - `EClientEventName.MESSAGE_UPDATED` (`"message.updated"`): Fired when carrier delivery status transitions (`queued`, `sent`, `delivered`, `failed`).
+    - `EClientEventName.CONVERSATION_UPDATED` (`"conversation.updated"`): Fired when a conversation thread status, assignment, or unread count updates.
+  - **REST Endpoints & Type Definitions**:
+    - Added `CONVERSATIONS`, `CONVERSATION_DETAILS`, `CONVERSATION_MESSAGES`, and `CONVERSATION_READ` to `API_ENDPOINTS`.
+    - Added comprehensive TypeScript interfaces: `IConversation`, `IConversationMessage`, `IConversationLastMessage`, `IListConversationsQuery`, `IListConversationsResponse`, `IListMessagesQuery`, `IListMessagesResponse`, `IStartConversationPayload`, `IStartConversationResponse`, `ISendMessagePayload`, `IUpdateConversationPayload`, `IMarkAsReadResponse`, `IMessageReceivedEvent`, `IMessageSentEvent`, `IMessageUpdatedEvent`.
+    - Standardized phone number fields to provide both `from_number` and `to_number` across all push payloads and SSE stream objects.
+
 ## [1.2.4] - 2026-09-09
 
 ### Added
@@ -71,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`transfer_reason` in `call.ring` Event & `Call` Instance**:
   - Added `transfer_reason?: string` to `ICallRingParams` payload in the `call.ring` SSE event.
   - Exposed `call.transferReason?: string` on the `Call` instance when a transferred call session is initialized.
-  - Allows frontends, Webphones, and Console agents to display the contextual transfer reason provided by Voice AI agents (e.g., *"Customer requested receptionist for billing inquiry"*) or human agents during ringing before and after answering.
+  - Allows frontends, Webphones, and Console agents to display the contextual transfer reason provided by Voice AI agents (e.g., _"Customer requested receptionist for billing inquiry"_) or human agents during ringing before and after answering.
   - Updated `example/index.html` demo to display `transfer_reason` in the incoming call banner and event log.
 
 ## [1.2.0] - 2026-08-20

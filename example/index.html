@@ -1246,7 +1246,11 @@
         const time = new Date().toLocaleTimeString("en-US", { hour12: false });
         const entry = document.createElement("div");
         entry.className = `log-entry ${type}`;
-        entry.innerHTML = `<span class="time">${time}</span> ${message}`;
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "time";
+        timeSpan.textContent = time;
+        entry.appendChild(timeSpan);
+        entry.appendChild(document.createTextNode(` ${message}`));
         panel.appendChild(entry);
         panel.scrollTop = panel.scrollHeight;
 
