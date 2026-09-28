@@ -88,7 +88,9 @@ export interface IListMessagesResponse {
 
 export interface IStartConversationPayload {
   from: string;
-  to: string;
+  client_number: string;
+  /** @deprecated Optional alias for client_number */
+  to?: string;
   body: string;
   media_urls?: string[];
   contact_id?: string;
