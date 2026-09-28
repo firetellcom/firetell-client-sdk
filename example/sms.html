@@ -1666,7 +1666,7 @@
         try {
           const payload = {
             from,
-            to,
+            client_number: to,
             body,
           };
           if (media) payload.media_urls = [media];

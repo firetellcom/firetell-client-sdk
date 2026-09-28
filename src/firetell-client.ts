@@ -803,13 +803,28 @@ export class FiretellClient {
     payload: IStartConversationPayload
   ): Promise<IStartConversationResponse> {
     const url = `${this.baseUrl}${API_ENDPOINTS.CONVERSATIONS}`;
+    const clientNumber = payload.client_number || payload.to;
+    if (!clientNumber) {
+      throw new Error("client_number is required to start a conversation");
+    }
+
+    const bodyPayload: Record<string, unknown> = {
+      from: payload.from,
+      client_number: clientNumber,
+      body: payload.body,
+    };
+    if (payload.media_urls) bodyPayload.media_urls = payload.media_urls;
+    if (payload.contact_id) bodyPayload.contact_id = payload.contact_id;
+    if (payload.assigned_agent_id) bodyPayload.assigned_agent_id = payload.assigned_agent_id;
+    if (payload.assigned_team_id) bodyPayload.assigned_team_id = payload.assigned_team_id;
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.jwt}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(bodyPayload),
     });
 
     if (!response.ok) {
