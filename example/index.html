@@ -30,8 +30,36 @@
         color: #fff;
         transform: scale(1.05);
       }
-      .agent-call-btn:active {
-        transform: scale(0.95);
+      .nav-tabs {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 10px;
+        margin-bottom: 12px;
+      }
+      .nav-tab {
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        text-decoration: none;
+        color: var(--text-muted);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .nav-tab:hover {
+        color: var(--text);
+        border-color: var(--primary);
+      }
+      .nav-tab.active {
+        color: #fff;
+        background: var(--primary);
+        border-color: var(--primary);
+        box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
       }
     </style>
   </head>
@@ -41,6 +69,10 @@
       <!-- ── Header ──────────────────────── -->
       <div class="header">
         <h1>🔥 Firetell WebRTC Example</h1>
+        <div class="nav-tabs">
+          <a href="index.html" class="nav-tab active">📞 Voice Demo</a>
+          <a href="sms.html" class="nav-tab">💬 SMS Demo</a>
+        </div>
         <span class="badge" id="sdkVersion">SDK v—</span>
       </div>
 
