@@ -11,7 +11,7 @@ import {
   ICallRecordingStartedEvent,
   ICallRecordingCompletedEvent,
 } from "./interfaces/recording.interface";
-import { SimpleEventEmitter, SseStreamClient, SseMessageEvent } from "./utils";
+import { SimpleEventEmitter, SseStreamClient, SseMessageEvent, isJwtExpired } from "./utils";
 import { FiretellClient } from "./firetell-client";
 import { DEFAULT_ICE_SERVERS, API_ENDPOINTS } from "./constants";
 
@@ -20,6 +20,21 @@ export interface IWsEventMessage {
   event: string;
   data?: Record<string, unknown>;
 }
+
+/** Must receive session.connected within this window after opening the socket */
+const WS_AUTH_TIMEOUT_MS = 3000;
+/** App-level keep-alive; must stay well below Cloudflare's 100s idle timeout */
+const WS_PING_INTERVAL_MS = 25000;
+/** No inbound message for this long => connection considered dead */
+const WS_IDLE_TIMEOUT_MS = 60000;
+/** Total reconnect window; must be shorter than server DISCONNECT_GRACE_MS (15s) */
+const WS_RECONNECT_WINDOW_MS = 14000;
+const WS_RECONNECT_BASE_DELAY_MS = 500;
+const WS_RECONNECT_MAX_DELAY_MS = 4000;
+/** Max events queued while signaling is reconnecting */
+const WS_OUTBOX_LIMIT = 50;
+/** Custom close code used when the SDK drops a dead connection itself */
+const WS_CLOSE_DEAD_CONNECTION = 4000;
 
 export class Call extends SimpleEventEmitter {
   public callId: string | null = null;
@@ -51,6 +66,18 @@ export class Call extends SimpleEventEmitter {
   private _destroying: boolean = false;
   private currentRemoteSetupRole: string | null = null;
 
+  // ─── Signaling connection state (keep-alive / reconnect) ───
+  private _wsUrl: string | null = null;
+  private _callToken: string | null = null;
+  private _signalingReady: boolean = false;
+  private _reconnecting: boolean = false;
+  private _reconnectAttempt: number = 0;
+  private _reconnectStartedAt: number = 0;
+  private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _pingTimer: ReturnType<typeof setInterval> | null = null;
+  private _lastWsMessageAt: number = 0;
+  private _wsOutbox: IWsEventMessage[] = [];
+
   constructor(client: FiretellClient, options: CallOptions = {}) {
     super();
     if (!(client instanceof FiretellClient))
@@ -74,62 +101,272 @@ export class Call extends SimpleEventEmitter {
   /**
    * Open dedicated Native WebSocket signaling connection for this call session
    * and authenticate with call_token within 3s.
+   * The connection is kept alive with periodic pings and automatically
+   * reconnected (resuming the same call) if it drops unexpectedly.
    */
   public async connectSignaling(wsUrl: string, callToken: string): Promise<void> {
+    this._wsUrl = wsUrl;
+    this._callToken = callToken;
+    await this._openSignalingSocket(false);
+  }
+
+  /**
+   * Helper to send JSON event message over this call's WebSocket.
+   * While signaling is reconnecting, events are queued and flushed after resume.
+   */
+  public sendWsEvent(event: string, data?: Record<string, unknown>): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this._signalingReady) {
+      this.ws.send(JSON.stringify({ event, data }));
+      return;
+    }
+    if (this._reconnecting && this._wsOutbox.length < WS_OUTBOX_LIMIT) {
+      this._wsOutbox.push({ event, data });
+    }
+  }
+
+  /**
+   * Whether the signaling WebSocket is currently reconnecting.
+   */
+  public get isReconnecting(): boolean {
+    return this._reconnecting;
+  }
+
+  /**
+   * Open a signaling socket and resolve once `session.connected` is received.
+   */
+  private _openSignalingSocket(isReconnect: boolean): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(wsUrl);
-
-        const authTimeout = setTimeout(() => {
-          if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
-            this.ws.close();
-            this.ws = null;
-          }
-          reject(new Error("Call WebSocket authentication timed out after 3s"));
-        }, 3000);
-
-        this.ws.onopen = () => {
-          // Send session.connect with call_token
-          this.sendWsEvent("session.connect", { call_token: callToken });
-        };
-
-        this.ws.onmessage = (event: MessageEvent) => {
-          try {
-            const parsed = JSON.parse(event.data) as IWsEventMessage;
-            this._handleWsMessage(parsed, () => {
-              clearTimeout(authTimeout);
-              resolve();
-            });
-          } catch (err) {
-            console.error("Call.connectSignaling::JSON parse error:", err);
-          }
-        };
-
-        this.ws.onerror = (err) => {
-          clearTimeout(authTimeout);
-          this.emit(ECallEventName.STATE, { state: ECallState.ERROR, reason: "WebSocket error" });
-          reject(err);
-        };
-
-        this.ws.onclose = () => {
-          clearTimeout(authTimeout);
-          this.ws = null;
-          if (this.active && !this._destroying) {
-            this.destroy(false);
-          }
-        };
-      } catch (err) {
-        reject(err);
+      if (!this._wsUrl) {
+        reject(new Error("Missing signaling ws_url"));
+        return;
       }
+
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(this._wsUrl);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
+      this.ws = ws;
+      let settled = false;
+
+      const authTimeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        this._detachSocket(ws);
+        reject(new Error("Call WebSocket authentication timed out after 3s"));
+      }, WS_AUTH_TIMEOUT_MS);
+
+      ws.onopen = () => {
+        // session.connect is sent directly (bypasses the outbox / ready check)
+        ws.send(
+          JSON.stringify({
+            event: "session.connect",
+            data: this._buildSessionConnectData(isReconnect),
+          })
+        );
+      };
+
+      ws.onmessage = (event: MessageEvent) => {
+        if (this.ws !== ws) return;
+        this._lastWsMessageAt = Date.now();
+        try {
+          const parsed = JSON.parse(event.data) as IWsEventMessage;
+          this._handleWsMessage(parsed, () => {
+            clearTimeout(authTimeout);
+            this._signalingReady = true;
+            this._startWsPing();
+            this._flushWsOutbox();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          });
+        } catch (err) {
+          console.error("Call.connectSignaling::JSON parse error:", err);
+        }
+      };
+
+      ws.onerror = (err) => {
+        if (this.ws !== ws) return;
+        // Only surface as call error for the initial connection; drops mid-call are handled by reconnect
+        if (!isReconnect && !this._signalingReady) {
+          this.emit(ECallEventName.STATE, { state: ECallState.ERROR, reason: "WebSocket error" });
+        }
+        if (!settled) {
+          settled = true;
+          clearTimeout(authTimeout);
+          reject(err);
+        }
+      };
+
+      ws.onclose = (ev: CloseEvent) => {
+        clearTimeout(authTimeout);
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Call WebSocket closed (code=${ev.code})`));
+        }
+        if (this.ws !== ws) return; // superseded or intentionally detached
+        this.ws = null;
+        this._handleSignalingClose(ev.code);
+      };
     });
   }
 
   /**
-   * Helper to send JSON event message over this call's WebSocket
+   * Build `session.connect` payload. On reconnect, include call_id so the server
+   * resumes the existing session, and fall back to the client JWT if the call_token expired.
    */
-  public sendWsEvent(event: string, data?: Record<string, unknown>): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ event, data }));
+  private _buildSessionConnectData(isReconnect: boolean): Record<string, unknown> {
+    let token = this._callToken;
+    if (isReconnect && token && isJwtExpired(token)) {
+      const fallback = this.client?.getJwt();
+      if (fallback) token = fallback;
+    }
+    const data: Record<string, unknown> = { call_token: token };
+    if (isReconnect) {
+      if (this.callId) data.call_id = this.callId;
+      data.reconnect = true;
+    }
+    return data;
+  }
+
+  private _handleSignalingClose(code: number): void {
+    this._stopWsPing();
+    const wasReady = this._signalingReady;
+    this._signalingReady = false;
+
+    if (this._destroying) return;
+    // A reconnect attempt failed: the attempt loop schedules the next try
+    if (this._reconnecting) return;
+
+    if (wasReady && this._shouldReconnect(code)) {
+      this._beginReconnect(code);
+      return;
+    }
+
+    if (this.active) {
+      this.destroy(false);
+    }
+  }
+
+  private _shouldReconnect(code: number): boolean {
+    // 1000 / 1005: intentional close (server ended or transferred the session)
+    if (code === 1000 || code === 1005) return false;
+    if (this.state === ECallState.ENDED || this.state === ECallState.ERROR) return false;
+    return Boolean(this._wsUrl && this._callToken && this.callId);
+  }
+
+  private _beginReconnect(code: number): void {
+    this._reconnecting = true;
+    this._reconnectAttempt = 0;
+    this._reconnectStartedAt = Date.now();
+    this._scheduleReconnectAttempt(code);
+  }
+
+  private _scheduleReconnectAttempt(code?: number): void {
+    if (this._destroying) return;
+
+    const elapsed = Date.now() - this._reconnectStartedAt;
+    const remaining = WS_RECONNECT_WINDOW_MS - elapsed;
+    if (remaining <= 0) {
+      this._failReconnect();
+      return;
+    }
+
+    const delay = Math.min(
+      WS_RECONNECT_BASE_DELAY_MS * 2 ** this._reconnectAttempt,
+      WS_RECONNECT_MAX_DELAY_MS,
+      remaining
+    );
+    this._reconnectAttempt++;
+    this.emit(ECallEventName.SIGNALING, {
+      status: "reconnecting",
+      attempt: this._reconnectAttempt,
+      code,
+    });
+
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      if (this._destroying) return;
+      this._openSignalingSocket(true)
+        .then(() => {
+          if (this._destroying) return;
+          this._reconnecting = false;
+          this.emit(ECallEventName.SIGNALING, {
+            status: "reconnected",
+            attempt: this._reconnectAttempt,
+          });
+          this._reconnectAttempt = 0;
+        })
+        .catch(() => {
+          this._scheduleReconnectAttempt();
+        });
+    }, delay);
+  }
+
+  private _failReconnect(): void {
+    this._reconnecting = false;
+    this._wsOutbox = [];
+    this.emit(ECallEventName.SIGNALING, { status: "failed" });
+    this.state = ECallState.ENDED;
+    this.emit(ECallEventName.STATE, {
+      state: ECallState.ENDED,
+      reason: "Signaling connection lost",
+    });
+    this.destroy(false);
+  }
+
+  private _flushWsOutbox(): void {
+    if (!this._wsOutbox.length) return;
+    const queued = this._wsOutbox;
+    this._wsOutbox = [];
+    queued.forEach((msg) => this.sendWsEvent(msg.event, msg.data));
+  }
+
+  /**
+   * Periodic app-level ping. Browsers do not expose protocol-level pings,
+   * so this also lets the SDK detect half-open connections.
+   */
+  private _startWsPing(): void {
+    this._stopWsPing();
+    this._lastWsMessageAt = Date.now();
+    this._pingTimer = setInterval(() => {
+      const ws = this.ws;
+      if (!ws) return;
+      if (Date.now() - this._lastWsMessageAt > WS_IDLE_TIMEOUT_MS) {
+        console.warn(`Call[${this.callId}] signaling idle timeout, reconnecting`);
+        this._detachSocket(ws);
+        this._handleSignalingClose(WS_CLOSE_DEAD_CONNECTION);
+        return;
+      }
+      this.sendWsEvent("session.ping", {});
+    }, WS_PING_INTERVAL_MS);
+  }
+
+  private _stopWsPing(): void {
+    if (this._pingTimer) {
+      clearInterval(this._pingTimer);
+      this._pingTimer = null;
+    }
+  }
+
+  /**
+   * Remove handlers and close a socket without triggering close handling.
+   */
+  private _detachSocket(ws: WebSocket): void {
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+    try {
+      ws.close();
+    } catch {
+      // ignore
+    }
+    if (this.ws === ws) {
+      this.ws = null;
     }
   }
 
@@ -180,6 +417,11 @@ export class Call extends SimpleEventEmitter {
         break;
       }
       case "session.error": {
+        if (this._reconnecting && !this._signalingReady) {
+          // Failed reconnect attempt; retry loop handles it without surfacing a call error
+          console.warn("Call.handleWsMessage::session.error during reconnect:", data);
+          break;
+        }
         console.error("Call.handleWsMessage::session.error:", data);
         this.emit(ECallEventName.STATE, {
           state: ECallState.ERROR,
@@ -922,14 +1164,25 @@ export class Call extends SimpleEventEmitter {
     }
     this.active = false;
 
-    // Close dedicated Call WebSocket
+    // Stop keep-alive / reconnect machinery
+    this._stopWsPing();
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    this._reconnecting = false;
+    this._signalingReady = false;
+    this._wsOutbox = [];
+
+    // Close dedicated Call WebSocket (1000 = intentional, server cleans up immediately)
     if (this.ws) {
+      const ws = this.ws;
+      this.ws = null;
       try {
-        this.ws.close();
+        ws.close(1000, "Call ended");
       } catch {
         // Ignore WebSocket close errors during cleanup
       }
-      this.ws = null;
     }
 
     // Close dedicated Call SSE Stream

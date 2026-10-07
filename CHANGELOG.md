@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-10-07
+
+### Added
+
+- **Signaling WebSocket Auto-Reconnect & Call Resume**:
+  - When the per-call signaling WebSocket drops unexpectedly (any close code other than `1000`/`1005`), `Call` automatically reconnects with exponential backoff (0.5s → 1s → 2s → 4s) within a 14s window, staying inside the server's 15s session grace period.
+  - Reconnect sends `session.connect` with `{ call_token, call_id, reconnect: true }` so the server resumes the existing call session instead of creating a new one. Media (WebRTC) is not interrupted.
+  - If the `call_token` (15m TTL) has expired at reconnect time, the client JWT is used as a fallback.
+  - Events sent while reconnecting (e.g. `call.mute`, `call.hold`, `call.dtmf`) are queued (max 50) and flushed once the session is resumed.
+  - Added `ECallEventName.SIGNALING` (`"signaling"`) event with payload `{ status: "reconnecting" | "reconnected" | "failed", attempt?, code? }` so apps can display a "Reconnecting…" indicator.
+  - Added `call.isReconnecting: boolean` getter.
+- **Signaling Keep-Alive**:
+  - `Call` sends an app-level `session.ping` every 25s, preventing proxies such as Cloudflare (100s idle timeout) from closing idle signaling connections during long calls.
+  - Connections with no inbound message for 60s are treated as dead (half-open) and are reconnected.
+- **Utilities**: Added `getJwtExpiry(token)` and `isJwtExpired(token, skewSeconds?)` helpers.
+
+### Changed
+
+- `Call.destroy()` now closes the signaling WebSocket with code `1000` ("Call ended") so the server cleans up immediately instead of waiting for the reconnect grace period.
+- A `session.error` received during a reconnect attempt is logged and retried instead of emitting `ECallState.ERROR`.
+- A WebSocket `error` after the call is connected no longer emits `ECallState.ERROR`; it is handled by the reconnect flow.
+
+### Fixed
+
+- Calls dropping after ~100 seconds when the signaling server is behind Cloudflare: the call was ended because no signaling traffic flowed after setup.
+
+### Notes
+
+- Requires a signaling server version that supports session resume (grace period + `session.connected { resumed: true }`). Against older servers the SDK still reconnects, but the server will have already ended the call and responds with `call.ended`.
+
 ## [1.2.7] - 2026-09-28
 
 ### Changed
