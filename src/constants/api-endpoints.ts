@@ -5,6 +5,8 @@
 export const API_ENDPOINTS = {
   /** Workspace metadata (WS servers, ICE servers) */
   WORKSPACE_METADATA: "/api/v1",
+  /** Refresh ICE servers (short-lived TURN credentials) */
+  ICE_SERVERS: "/api/v1/ice-servers",
   /** Agent login (username/password → JWT) */
   AUTH_LOGIN: "/api/v1/auth/login",
   /** REST Make Call Endpoint */

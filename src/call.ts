@@ -1264,11 +1264,11 @@ export class Call extends SimpleEventEmitter {
     constraints: MediaStreamConstraints
   ): Promise<boolean> {
     try {
+      // Make sure TURN credentials remain valid for the whole call
+      const iceServers = (await this.client?.ensureIceServers()) ?? [];
       this._cleanupPeerConnection();
       this.peerConnection = new RTCPeerConnection({
-        iceServers: this.client?.iceServers?.length
-          ? this.client.iceServers
-          : DEFAULT_ICE_SERVERS,
+        iceServers: iceServers.length ? iceServers : DEFAULT_ICE_SERVERS,
       });
 
       this.peerConnection.oniceconnectionstatechange = () => {

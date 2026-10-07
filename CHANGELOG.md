@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-10-07
+
+### Added
+
+- **TURN credential refresh**:
+  - Workspace metadata may now include short-lived TURN credentials with `ice_servers_ttl` (seconds). The SDK tracks their expiry locally (TTL-based, unaffected by client clock skew).
+  - `client.ensureIceServers(minValidityMs?)` refreshes ICE servers from `GET /api/v1/ice-servers` when credentials expire within 6h (default). It never throws; on failure the cached servers are used.
+  - `client.refreshIceServers()` forces a refresh (concurrent calls share one request, 3s timeout).
+  - `Call` calls `ensureIceServers()` before creating each `RTCPeerConnection`; an incoming `call.ring` pre-fetches while the call is ringing.
+  - Backward compatible: when the server returns no `ice_servers_ttl` (STUN only / older backend), no refresh requests are made.
+
 ## [1.3.0] - 2026-10-07
 
 ### Added
