@@ -22,7 +22,11 @@ import {
   IMarkAsReadResponse,
 } from "./interfaces/conversation.interface";
 import { API_ENDPOINTS } from "./constants/api-endpoints";
-import { DEFAULT_ICE_SERVERS } from "./constants/ice-servers";
+import {
+  DEFAULT_ICE_SERVERS,
+  ICE_REFRESH_THRESHOLD_MS,
+  ICE_REFRESH_TIMEOUT_MS,
+} from "./constants/ice-servers";
 
 declare const __SDK_VERSION__: string;
 export const SDK_VERSION = typeof __SDK_VERSION__ !== "undefined" ? __SDK_VERSION__ : "1.0.1";
@@ -80,6 +84,13 @@ export interface ISupervisionResponse {
   expires_in: number;
 }
 
+/** ICE server fields returned by workspace metadata and the ICE refresh endpoint */
+interface IIceServersPayload {
+  ice_servers?: RTCIceServer[];
+  /** Seconds until TURN credentials expire; null/absent when TURN is not configured */
+  ice_servers_ttl?: number | null;
+}
+
 export class FiretellClient {
   public static readonly VERSION = SDK_VERSION;
   public readonly sdkVersion = SDK_VERSION;
@@ -88,6 +99,9 @@ export class FiretellClient {
   private jwtPayload: IJwtPayload | null = null;
   private wsServers: string[] = [];
   public iceServers: RTCIceServer[] = DEFAULT_ICE_SERVERS;
+  /** Local epoch ms when TURN credentials expire (null = no expiring credentials) */
+  private iceServersExpiresAt: number | null = null;
+  private iceRefreshPromise: Promise<void> | null = null;
   private session: ISession | null = null;
   private isReconnecting: boolean = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -160,12 +174,11 @@ export class FiretellClient {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      const data = (await response.json()) as {
+      const data = (await response.json()) as IIceServersPayload & {
         ws_servers: string[];
-        ice_servers: RTCIceServer[];
       };
       this.wsServers = data.ws_servers || [];
-      this.iceServers = data.ice_servers && data.ice_servers.length ? data.ice_servers : DEFAULT_ICE_SERVERS;
+      this._applyIceServers(data);
 
       // Start SSE Realtime Events stream for background presence & workspace updates
       this._initEventStream();
@@ -192,6 +205,72 @@ export class FiretellClient {
           : new Error("Failed to fetch workspace metadata")
       );
     }
+  }
+
+  /**
+   * Store ICE servers and compute their local expiry from the server-provided TTL
+   * (TTL-based, so it is not affected by client clock skew).
+   */
+  private _applyIceServers(data: IIceServersPayload): void {
+    this.iceServers =
+      data.ice_servers && data.ice_servers.length ? data.ice_servers : DEFAULT_ICE_SERVERS;
+    const ttl = Number(data.ice_servers_ttl);
+    this.iceServersExpiresAt = ttl > 0 ? Date.now() + ttl * 1000 : null;
+  }
+
+  /**
+   * Ensure ICE servers (TURN credentials) stay valid for at least `minValidityMs`.
+   * Refreshes from the server when needed. Never throws: on failure the cached
+   * servers are returned (STUN keeps working even if TURN credentials expired).
+   * Called automatically before each call's media setup.
+   */
+  public async ensureIceServers(
+    minValidityMs: number = ICE_REFRESH_THRESHOLD_MS
+  ): Promise<RTCIceServer[]> {
+    if (
+      this.iceServersExpiresAt === null ||
+      this.iceServersExpiresAt - Date.now() > minValidityMs
+    ) {
+      return this.iceServers;
+    }
+    try {
+      await this.refreshIceServers();
+    } catch (error) {
+      console.warn("ensureIceServers: refresh failed, using cached ICE servers:", error);
+    }
+    return this.iceServers;
+  }
+
+  /**
+   * Fetch fresh ICE servers (TURN credentials) from the server.
+   * Concurrent calls share the same in-flight request.
+   */
+  public refreshIceServers(): Promise<void> {
+    if (this.iceRefreshPromise) return this.iceRefreshPromise;
+
+    this.iceRefreshPromise = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ICE_REFRESH_TIMEOUT_MS);
+      try {
+        const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.ICE_SERVERS}`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.jwt}`,
+          },
+          method: "GET",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        this._applyIceServers((await response.json()) as IIceServersPayload);
+      } finally {
+        clearTimeout(timer);
+        this.iceRefreshPromise = null;
+      }
+    })();
+
+    return this.iceRefreshPromise;
   }
 
   /**
@@ -319,6 +398,8 @@ export class FiretellClient {
         switch (event) {
           case "call.ring": {
             const ringData = (data || {}) as ICallRingParams;
+            // Refresh TURN credentials (if near expiry) while the call is ringing
+            void this.ensureIceServers();
             this.events.emit(EClientEventName.CALL_RING, ringData);
             if (ringData.call_token) {
               const wsUrl =
