@@ -54,7 +54,7 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.15.0",
     "eslint": "^9.39.5",
     "globals": "^17.12.0",
