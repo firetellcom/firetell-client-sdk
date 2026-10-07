@@ -13,4 +13,6 @@ export enum ECallEventName {
     RECORDING = "recording",
     RECORDING_STARTED = "recording.started",
     RECORDING_COMPLETED = "recording.completed",
+    /** Signaling WebSocket status: { status: "reconnecting" | "reconnected" | "failed", attempt?, code? } */
+    SIGNALING = "signaling",
 }

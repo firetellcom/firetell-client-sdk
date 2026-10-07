@@ -31,6 +31,14 @@ description: >
 - Response Event from Server: `session.connected` `{ session_id, workspace_id, username, call_id, mode }`
 - ⚠️ **Server Enforcement**: If `session.connect` with a valid `call_token` (JWT with `aud: 'call-session'`) is not received within 3 seconds, the server terminates the socket.
 
+## Keep-Alive & Reconnect (Cloudflare-safe)
+
+- Cloudflare closes WebSockets idle for 100s. Server sends protocol pings every 30s; SDK sends `session.ping` every 25s (server replies `session.pong`) and treats 60s of silence as a dead connection.
+- **Close codes**: `1000`/`1005` = intentional (no reconnect, server cleans up immediately). Any other code mid-call ⇒ server holds the session for `DISCONNECT_GRACE_MS` (15s) and buffers notifications.
+- **Resume**: SDK reconnects with backoff (0.5s → 4s, total window 14s) and sends `session.connect` `{ call_token, call_id, reconnect: true }`. If `call_token` expired, the client JWT is used instead.
+- Server replies `session.connected` `{ ..., resumed: true }`, then flushes buffered events (and `call.ended` if the call ended meanwhile). No `call.offer` redelivery on resume.
+- SDK emits Call event `signaling` `{ status: "reconnecting" | "reconnected" | "failed", attempt?, code? }`. Events sent while reconnecting are queued and flushed after resume.
+
 ## Outbound Call & Supervision Flow
 
 1. **Make Call REST API**: `POST /api/v1/call-center/calls` → Returns `{ call_id, call_token, ws_url }`.
